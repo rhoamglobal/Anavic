@@ -1,0 +1,747 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Gas Station Accounting & Shift Reconciliation</title>
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- FontAwesome for beautiful icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <!-- Chart.js CDN for beautiful analytics visualizers -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap');
+    body {
+      font-family: 'Plus Jakarta Sans', sans-serif;
+    }
+  </style>
+</head>
+<body class="bg-slate-50 text-slate-800 min-h-screen flex flex-col">
+
+  <!-- Header / Navigation Bar -->
+  <header class="bg-indigo-900 text-white shadow-md">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+      <div class="flex items-center space-x-3">
+        <div class="bg-indigo-600 p-2 rounded-lg text-white">
+          <i class="fa-solid fa-gas-pump text-xl"></i>
+        </div>
+        <div>
+          <h1 class="text-lg font-bold tracking-tight">Anavic Gas Station</h1>
+          <p class="text-xs text-indigo-200">Accounting & Shift Reconciliation</p>
+        </div>
+      </div>
+
+      <!-- Logged In User Info -->
+      <div id="userInfoSection" class="hidden flex items-center space-x-4">
+        <div class="text-right">
+          <span id="userFullName" class="block font-semibold text-sm">John Doe</span>
+          <span id="userRoleBadge" class="inline-block px-2 py-0.5 rounded text-[10px] uppercase font-bold tracking-wider bg-indigo-700 text-indigo-100">Attendant</span>
+        </div>
+        <button onclick="handleLogout()" class="bg-indigo-800 hover:bg-indigo-700 text-white text-xs px-3 py-2 rounded-lg transition duration-200">
+          <i class="fa-solid fa-right-from-bracket mr-1"></i> Log Out
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Content Body -->
+  <main class="flex-grow max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-8 py-8">
+
+    <!-- Toast notifications -->
+    <div id="toast" class="hidden fixed bottom-5 right-5 z-50 flex items-center p-4 space-x-3 text-white rounded-lg shadow-lg max-w-md transition-all duration-300">
+      <div id="toastIcon"></div>
+      <div id="toastMessage" class="text-sm font-medium"></div>
+    </div>
+
+    <!-- 1. LOGIN SCREEN -->
+    <section id="loginScreen" class="max-w-md mx-auto my-12 bg-white rounded-2xl shadow-xl border border-slate-100 overflow-hidden">
+      <div class="p-8">
+        <div class="text-center mb-8">
+          <h2 class="text-2xl font-bold text-slate-900">Welcome Back</h2>
+          <p class="text-slate-500 text-sm mt-1">Sign in to record sales or access accounting dashboards</p>
+        </div>
+
+        <form onsubmit="handleLogin(event)" class="space-y-5">
+          <div>
+            <label class="block text-xs font-semibold text-slate-600 uppercase tracking-wider mb-2">Username</label>
+            <div class="relative">
+              <span class="absolute inset-y-0 left-0 flex items-center pl-3 text-slate-400">
+                <i class="fa-solid fa-user"></i>
+              </span>
+              <input type="text" id="usernameInput" required placeholder="Enter username (attendant or accountant)" class="w-full pl-10 pr-4 py-3 rounded-xl border border-slate-200 outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition text-sm">
+            </div>
+          </div>
+
+          <div>
+            <label class="block text-xs font-semibold text-slate-600 uppercase tracking-wider mb-2">Password</label>
+            <div class="relative">
+              <span class="absolute inset-y-0 left-0 flex items-center pl-3 text-slate-400">
+                <i class="fa-solid fa-lock"></i>
+              </span>
+              <input type="password" id="passwordInput" required placeholder="••••••••" class="w-full pl-10 pr-4 py-3 rounded-xl border border-slate-200 outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition text-sm">
+            </div>
+          </div>
+
+          <button type="submit" class="w-full py-3.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl shadow-lg shadow-indigo-600/20 transition duration-200 text-sm">
+            Sign In <i class="fa-solid fa-arrow-right ml-2"></i>
+          </button>
+        </form>
+
+        <div class="mt-6 pt-6 border-t border-slate-100 text-center">
+          <p class="text-xs text-slate-400">Demo Accounts:</p>
+          <div class="flex justify-center space-x-4 mt-2">
+            <span class="px-2.5 py-1 bg-indigo-50 text-indigo-700 text-[10px] font-semibold rounded-full cursor-pointer hover:bg-indigo-100 transition" onclick="fillDemo('attendant', 'attendant123')">Attendant Account</span>
+            <span class="px-2.5 py-1 bg-emerald-50 text-emerald-700 text-[10px] font-semibold rounded-full cursor-pointer hover:bg-emerald-100 transition" onclick="fillDemo('accountant', 'accountant123')">Accountant Account</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+
+    <!-- 2. PUMP ATTENDANT AREA -->
+    <section id="attendantArea" class="hidden space-y-8">
+
+      <!-- No Active Shift Landing View -->
+      <div id="noShiftView" class="max-w-2xl mx-auto bg-white rounded-2xl shadow-lg border border-slate-100 overflow-hidden text-center p-12">
+        <div class="inline-flex p-4 bg-indigo-50 rounded-full text-indigo-600 mb-6">
+          <i class="fa-solid fa-lock-open text-3xl"></i>
+        </div>
+        <h3 class="text-xl font-bold text-slate-950 mb-2">Ready to Start Your Shift?</h3>
+        <p class="text-slate-500 text-sm max-w-md mx-auto mb-8">Before processing sales, please record your assigned pump's initial meter readings and your opening cash drawer float.</p>
+
+        <button onclick="toggleModal('openShiftModal', true)" class="px-6 py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl shadow-lg shadow-indigo-600/20 transition duration-200 text-sm">
+          <i class="fa-solid fa-play mr-2"></i> Open New Shift
+        </button>
+      </div>
+
+      <!-- Active Shift Operations Dashboard -->
+      <div id="activeShiftView" class="hidden grid grid-cols-1 lg:grid-cols-3 gap-8">
+
+        <!-- Left: Shift Details & Totals -->
+        <div class="lg:col-span-1 space-y-6">
+          <div class="bg-indigo-900 text-white rounded-2xl p-6 shadow-lg relative overflow-hidden">
+            <div class="absolute -right-8 -bottom-8 opacity-10 text-[120px]">
+              <i class="fa-solid fa-clock"></i>
+            </div>
+
+            <div class="relative z-10">
+              <span class="text-xs text-indigo-200 uppercase font-bold tracking-wider">CURRENT SHIFT STATUS</span>
+              <h3 class="text-lg font-bold text-white mt-1">Shift In-Progress</h3>
+              <p class="text-xs text-indigo-300 mt-2">Started on: <span id="shiftOpenedTime" class="font-semibold">6:00 AM</span></p>
+
+              <div class="grid grid-cols-2 gap-4 mt-6 pt-6 border-t border-indigo-800">
+                <div>
+                  <span class="block text-[10px] text-indigo-300 uppercase font-semibold">Opening Float</span>
+                  <span id="shiftFloatVal" class="text-lg font-bold">$100.00</span>
+                </div>
+                <div>
+                  <span class="block text-[10px] text-indigo-300 uppercase font-semibold">Shift ID</span>
+                  <span id="shiftIDVal" class="text-lg font-bold">#23</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Shift Meters Summary Card -->
+          <div class="bg-white rounded-2xl border border-slate-100 p-6 shadow-sm">
+            <h4 class="text-sm font-bold text-slate-900 border-b border-slate-100 pb-3 mb-4">
+              <i class="fa-solid fa-gauge-high mr-2 text-indigo-600"></i> Starting Meter Readings
+            </h4>
+            <div class="space-y-4">
+              <div class="flex items-center justify-between p-3 bg-slate-50 rounded-xl">
+                <div class="flex items-center space-x-3">
+                  <div class="bg-orange-100 text-orange-600 p-2 rounded-lg text-sm"><i class="fa-solid fa-oil-well"></i></div>
+                  <div>
+                    <span class="block text-xs font-bold">Diesel Meter</span>
+                    <span class="text-[10px] text-slate-400">Unit Price: <span id="dieselPriceBadge" class="font-semibold">$1.65/L</span></span>
+                  </div>
+                </div>
+                <span id="dieselStartMeterBadge" class="font-mono font-semibold text-slate-700">1000.00</span>
+              </div>
+
+              <div class="flex items-center justify-between p-3 bg-slate-50 rounded-xl">
+                <div class="flex items-center space-x-3">
+                  <div class="bg-teal-100 text-teal-600 p-2 rounded-lg text-sm"><i class="fa-solid fa-fire"></i></div>
+                  <div>
+                    <span class="block text-xs font-bold">Petrol Meter</span>
+                    <span class="text-[10px] text-slate-400">Unit Price: <span id="petrolPriceBadge" class="font-semibold">$1.80/L</span></span>
+                  </div>
+                </div>
+                <span id="petrolStartMeterBadge" class="font-mono font-semibold text-slate-700">5000.00</span>
+              </div>
+            </div>
+
+            <button onclick="toggleModal('closeShiftModal', true)" class="w-full mt-6 py-3 bg-red-600 hover:bg-red-700 text-white text-sm font-bold rounded-xl shadow-lg shadow-red-600/10 transition">
+              <i class="fa-solid fa-power-off mr-1"></i> Close & Submit Shift
+            </button>
+          </div>
+        </div>
+
+        <!-- Middle & Right: Actions & Entries Logs -->
+        <div class="lg:col-span-2 space-y-6">
+          <div class="flex space-x-4">
+            <button onclick="toggleModal('logExpenseModal', true)" class="flex-1 p-4 bg-white hover:bg-slate-50 rounded-2xl border border-slate-100 shadow-sm text-left transition flex items-center justify-between group">
+              <div>
+                <span class="block text-xs text-slate-400 font-semibold uppercase">Petty Cash</span>
+                <span class="block text-base font-bold text-slate-800 mt-1">Log Expense</span>
+              </div>
+              <div class="p-3 bg-red-50 text-red-600 rounded-xl group-hover:scale-105 transition">
+                <i class="fa-solid fa-receipt"></i>
+              </div>
+            </button>
+
+            <button onclick="openCreditSaleModal()" class="flex-1 p-4 bg-white hover:bg-slate-50 rounded-2xl border border-slate-100 shadow-sm text-left transition flex items-center justify-between group">
+              <div>
+                <span class="block text-xs text-slate-400 font-semibold uppercase">Corporate Sale</span>
+                <span class="block text-base font-bold text-slate-800 mt-1">Log Credit Sale</span>
+              </div>
+              <div class="p-3 bg-emerald-50 text-emerald-600 rounded-xl group-hover:scale-105 transition">
+                <i class="fa-solid fa-file-invoice-dollar"></i>
+              </div>
+            </button>
+          </div>
+
+          <!-- Shift Log Lists -->
+          <div class="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
+            <div class="border-b border-slate-100 px-6 py-4 flex items-center justify-between">
+              <h3 class="font-bold text-slate-900 text-sm">Shift Activity Logs</h3>
+              <div class="flex space-x-2">
+                <span class="px-2.5 py-1 rounded bg-slate-100 text-slate-600 text-[10px] font-semibold" id="shiftExpenseTally">Expenses: $0.00</span>
+                <span class="px-2.5 py-1 rounded bg-emerald-50 text-emerald-700 text-[10px] font-semibold" id="shiftCreditTally">Credits: $0.00</span>
+              </div>
+            </div>
+
+            <!-- Tab content logs -->
+            <div class="p-6">
+              <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <!-- Petty cash list -->
+                <div>
+                  <h4 class="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">Expenses Logged</h4>
+                  <div class="space-y-3 max-h-60 overflow-y-auto pr-2" id="shiftExpensesList">
+                    <p class="text-xs text-slate-400 text-center py-6">No shift expenses logged yet.</p>
+                  </div>
+                </div>
+
+                <!-- Credit sales list -->
+                <div>
+                  <h4 class="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">Credit Sales Logged</h4>
+                  <div class="space-y-3 max-h-60 overflow-y-auto pr-2" id="shiftCreditSalesList">
+                    <p class="text-xs text-slate-400 text-center py-6">No credit sales logged yet.</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+
+    <!-- 3. ACCOUNTANT DASHBOARD & PORTAL -->
+    <section id="accountantArea" class="hidden space-y-8">
+
+      <!-- Sub-navigation tabs for Accountant -->
+      <div class="flex border-b border-slate-200">
+        <button onclick="switchAccountantTab('shiftsTab')" id="btn-shiftsTab" class="py-3 px-6 text-sm font-semibold border-b-2 border-indigo-600 text-indigo-600 focus:outline-none transition">
+          <i class="fa-solid fa-receipt mr-1"></i> Shift Reconciliations
+        </button>
+        <button onclick="switchAccountantTab('analyticsTab')" id="btn-analyticsTab" class="py-3 px-6 text-sm font-semibold border-b-2 border-transparent text-slate-500 hover:text-slate-800 hover:border-slate-300 focus:outline-none transition">
+          <i class="fa-solid fa-chart-line mr-1"></i> Analytics & Trends
+        </button>
+        <button onclick="switchAccountantTab('creditTab')" id="btn-creditTab" class="py-3 px-6 text-sm font-semibold border-b-2 border-transparent text-slate-500 hover:text-slate-800 hover:border-slate-300 focus:outline-none transition">
+          <i class="fa-solid fa-building-columns mr-1"></i> Corporate Ledgers
+        </button>
+        <button onclick="switchAccountantTab('tanksTab')" id="btn-tanksTab" class="py-3 px-6 text-sm font-semibold border-b-2 border-transparent text-slate-500 hover:text-slate-800 hover:border-slate-300 focus:outline-none transition">
+          <i class="fa-solid fa-bucket mr-1"></i> Tank Dip & Wet Stock
+        </button>
+      </div>
+
+      <!-- TAB 1: SHIFT RECONCILIATIONS -->
+      <div id="shiftsTab" class="accountant-tab space-y-6">
+        <div class="flex items-center justify-between">
+          <div>
+            <h3 class="text-lg font-bold text-slate-900">Shift Reconciliation Queue</h3>
+            <p class="text-xs text-slate-400">Review, flag discrepancies, and approve daily shift audits.</p>
+          </div>
+          <select id="shiftStatusFilter" onchange="loadShiftsList()" class="px-3 py-2 border border-slate-200 rounded-lg text-xs outline-none bg-white">
+            <option value="">All Statuses</option>
+            <option value="open">Open (In-Progress)</option>
+            <option value="closed">Closed (Pending Approval)</option>
+            <option value="approved">Approved / Reconciled</option>
+          </select>
+        </div>
+
+        <!-- Shift list results container -->
+        <div class="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
+          <table class="min-w-full divide-y divide-slate-100 text-left text-xs">
+            <thead class="bg-slate-50 text-slate-500 font-bold uppercase tracking-wider">
+              <tr>
+                <th class="px-6 py-3.5">ID</th>
+                <th class="px-6 py-3.5">Attendant</th>
+                <th class="px-6 py-3.5">Time Period</th>
+                <th class="px-6 py-3.5 text-right">Revenue</th>
+                <th class="px-6 py-3.5 text-right">Exp/Credit</th>
+                <th class="px-6 py-3.5 text-right">Expected Cash</th>
+                <th class="px-6 py-3.5 text-right">Actual Cash</th>
+                <th class="px-6 py-3.5 text-center">Variance</th>
+                <th class="px-6 py-3.5 text-center">Status</th>
+                <th class="px-6 py-3.5 text-right">Action</th>
+              </tr>
+            </thead>
+            <tbody id="shiftsTableBody" class="divide-y divide-slate-100 font-medium">
+              <tr>
+                <td colspan="10" class="text-center text-slate-400 py-12">Loading shift reconciliation logs...</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- TAB 2: ANALYTICS & TRENDS -->
+      <div id="analyticsTab" class="accountant-tab hidden space-y-6">
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-6">
+          <div class="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm">
+            <span class="block text-[10px] font-bold text-slate-400 uppercase tracking-wider">Total Sales Volume</span>
+            <span class="block text-2xl font-bold mt-1 text-slate-900" id="statVolume">0.00 L</span>
+            <span class="text-[10px] text-slate-400 mt-2 block">Diesel & Petrol liters sold</span>
+          </div>
+
+          <div class="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm">
+            <span class="block text-[10px] font-bold text-slate-400 uppercase tracking-wider">Total Shift Revenue</span>
+            <span class="block text-2xl font-bold mt-1 text-slate-900 text-indigo-600" id="statRevenue">$0.00</span>
+            <span class="text-[10px] text-slate-400 mt-2 block">Calculated from nozzle meters</span>
+          </div>
+
+          <div class="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm">
+            <span class="block text-[10px] font-bold text-slate-400 uppercase tracking-wider">Total Petty Expenses</span>
+            <span class="block text-2xl font-bold mt-1 text-slate-900 text-red-600" id="statExpenses">$0.00</span>
+            <span class="text-[10px] text-slate-400 mt-2 block">Deducted from attendant cash drawers</span>
+          </div>
+
+          <div class="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm">
+            <span class="block text-[10px] font-bold text-slate-400 uppercase tracking-wider">Accumulated Variance</span>
+            <span class="block text-2xl font-bold mt-1 text-slate-900" id="statVariance">$0.00</span>
+            <span class="text-[10px] text-slate-400 mt-2 block" id="statVarianceSub">Net cash drawers shortage/surplus</span>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <!-- Expenses distribution -->
+          <div class="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm">
+            <h4 class="text-sm font-bold text-slate-900 mb-4">Petty Cash Expense Distribution</h4>
+            <div class="h-64 flex items-center justify-center relative">
+              <canvas id="expenseChart"></canvas>
+            </div>
+          </div>
+
+          <!-- Price configuration widget -->
+          <div class="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm">
+            <h4 class="text-sm font-bold text-slate-900 mb-4">Global Price Management</h4>
+            <p class="text-xs text-slate-400 mb-6">Updating standard prices here immediately sets unit rates for any upcoming open shifts.</p>
+
+            <div class="space-y-4">
+              <div class="flex items-center justify-between p-4 bg-slate-50 rounded-xl">
+                <div class="flex items-center space-x-3">
+                  <div class="bg-orange-100 text-orange-600 p-2.5 rounded-lg text-sm"><i class="fa-solid fa-oil-well"></i></div>
+                  <div>
+                    <span class="block text-xs font-bold">Standard Diesel Rate</span>
+                    <span id="labelCurrentDiesel" class="text-[10px] text-slate-400">Current: $1.65 / L</span>
+                  </div>
+                </div>
+                <div class="flex items-center space-x-2">
+                  <input type="number" step="0.01" id="inputDieselPrice" class="w-20 px-2 py-1.5 border border-slate-200 rounded text-center text-xs font-semibold outline-none" placeholder="1.65">
+                  <button onclick="handlePriceUpdate('diesel')" class="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold rounded">Set</button>
+                </div>
+              </div>
+
+              <div class="flex items-center justify-between p-4 bg-slate-50 rounded-xl">
+                <div class="flex items-center space-x-3">
+                  <div class="bg-teal-100 text-teal-600 p-2.5 rounded-lg text-sm"><i class="fa-solid fa-fire"></i></div>
+                  <div>
+                    <span class="block text-xs font-bold">Standard Petrol Rate</span>
+                    <span id="labelCurrentPetrol" class="text-[10px] text-slate-400">Current: $1.80 / L</span>
+                  </div>
+                </div>
+                <div class="flex items-center space-x-2">
+                  <input type="number" step="0.01" id="inputPetrolPrice" class="w-20 px-2 py-1.5 border border-slate-200 rounded text-center text-xs font-semibold outline-none" placeholder="1.80">
+                  <button onclick="handlePriceUpdate('petrol')" class="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold rounded">Set</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- TAB 3: CORPORATE LEDGERS -->
+      <div id="creditTab" class="accountant-tab hidden space-y-6">
+        <div class="flex items-center justify-between">
+          <div>
+            <h3 class="text-lg font-bold text-slate-900">Corporate Accounts Receivable</h3>
+            <p class="text-xs text-slate-400">Manage client pricing rules, credit lines, and logs statements.</p>
+          </div>
+          <button onclick="toggleModal('createCustomerModal', true)" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-lg text-xs shadow-sm">
+            <i class="fa-solid fa-plus mr-1"></i> Add Corporate Customer
+          </button>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+          <!-- Corporate list panel -->
+          <div class="lg:col-span-1 bg-white rounded-2xl border border-slate-100 shadow-sm p-6 space-y-4">
+            <h4 class="text-sm font-bold text-slate-900 border-b border-slate-50 pb-3 mb-2">Corporate Client Registry</h4>
+            <div class="space-y-3 max-h-[480px] overflow-y-auto pr-2" id="corporateCustomersList">
+              <!-- Dynamically populated -->
+            </div>
+          </div>
+
+          <!-- Ledger statement panel -->
+          <div class="lg:col-span-2 bg-white rounded-2xl border border-slate-100 shadow-sm p-6 space-y-6">
+            <div id="ledgerEmptyState" class="text-center py-24 text-slate-400 text-xs">
+              <i class="fa-solid fa-magnifying-glass-chart text-4xl mb-4 text-slate-300"></i>
+              <p>Select a corporate customer from the list to view their ledger statement and record payments.</p>
+            </div>
+
+            <!-- Detail Statement Panel -->
+            <div id="ledgerDetailState" class="hidden space-y-6">
+              <div class="flex items-start justify-between border-b border-slate-100 pb-4">
+                <div>
+                  <h4 id="ledgerCustomerName" class="text-base font-bold text-slate-900">Globex Corp</h4>
+                  <div class="flex items-center space-x-3 mt-1.5 text-[11px] text-slate-400">
+                    <span id="ledgerCustomerPrice">Custom Diesel: $1.45/L</span>
+                    <span>•</span>
+                    <span id="ledgerCustomerLimit">Limit: $8,000.00</span>
+                  </div>
+                </div>
+
+                <div class="text-right">
+                  <span class="block text-[10px] text-slate-400 font-bold uppercase">OUTSTANDING BALANCE</span>
+                  <span id="ledgerCustomerBalance" class="text-xl font-bold text-red-600">$0.00</span>
+                </div>
+              </div>
+
+              <!-- Quick payments action -->
+              <div class="bg-slate-50 p-4 rounded-xl flex flex-wrap items-center justify-between gap-4">
+                <div class="text-xs">
+                  <span class="font-bold text-slate-700">Record Received Payment</span>
+                  <p class="text-[10px] text-slate-400">Instantly decreases corporate balance</p>
+                </div>
+                <div class="flex items-center space-x-2">
+                  <input type="number" id="payAmountInput" class="w-24 px-2 py-1.5 border border-slate-200 rounded text-xs" placeholder="Amount ($)">
+                  <select id="payMethodInput" class="px-2 py-1.5 border border-slate-200 rounded text-xs bg-white">
+                    <option value="Bank Transfer">Bank Transfer</option>
+                    <option value="Cash">Cash</option>
+                    <option value="Cheque">Cheque</option>
+                  </select>
+                  <input type="text" id="payRefInput" class="w-28 px-2 py-1.5 border border-slate-200 rounded text-xs" placeholder="Ref No. (Ref#)">
+                  <button onclick="handleRecordPayment()" class="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded text-xs transition">Submit</button>
+                </div>
+              </div>
+
+              <!-- Statement ledger lines table -->
+              <div class="space-y-3">
+                <h5 class="text-xs font-bold text-slate-500 uppercase tracking-wider">Statement of Account</h5>
+                <div class="border border-slate-150 rounded-xl overflow-hidden">
+                  <table class="min-w-full text-left text-[11px]">
+                    <thead class="bg-slate-50 text-slate-400 font-bold">
+                      <tr>
+                        <th class="px-4 py-2.5">Date</th>
+                        <th class="px-4 py-2.5">Transaction Details</th>
+                        <th class="px-4 py-2.5 text-right">Debit (+)</th>
+                        <th class="px-4 py-2.5 text-right">Credit (-)</th>
+                        <th class="px-4 py-2.5 text-right">Outstanding</th>
+                      </tr>
+                    </thead>
+                    <tbody id="ledgerTableBody">
+                      <!-- Populated via API -->
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- TAB 4: TANK DIP & WET STOCK RECONCILIATION -->
+      <div id="tanksTab" class="accountant-tab hidden space-y-6">
+        <div class="flex items-center justify-between">
+          <div>
+            <h3 class="text-lg font-bold text-slate-900">Wet Stock (Tank Dip) Reconciliation</h3>
+            <p class="text-xs text-slate-400">Compare physical dips vs. sales meters to calculate evaporation loss or leak analysis.</p>
+          </div>
+          <button onclick="toggleModal('recordDipModal', true)" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-lg text-xs shadow-sm">
+            <i class="fa-solid fa-plus mr-1"></i> Record Daily Dips & Deliveries
+          </button>
+        </div>
+
+        <!-- Tank logs results -->
+        <div class="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
+          <table class="min-w-full divide-y divide-slate-100 text-left text-xs">
+            <thead class="bg-slate-50 text-slate-500 font-bold uppercase tracking-wider">
+              <tr>
+                <th class="px-6 py-3.5">Date</th>
+                <th class="px-6 py-3.5 text-center bg-orange-50/40 text-orange-800">Diesel Start</th>
+                <th class="px-6 py-3.5 text-center bg-orange-50/40 text-orange-800">Diesel Deliver</th>
+                <th class="px-6 py-3.5 text-center bg-orange-50/40 text-orange-800">Diesel Sold</th>
+                <th class="px-6 py-3.5 text-center bg-orange-50/40 text-orange-800 font-bold">Expected Dip</th>
+                <th class="px-6 py-3.5 text-center bg-orange-50/40 text-orange-800 font-bold">Ending Dip</th>
+                <th class="px-6 py-3.5 text-center bg-orange-50/40 text-orange-800">Variance</th>
+                <th class="px-6 py-3.5 text-center bg-teal-50/40 text-teal-800">Petrol Start</th>
+                <th class="px-6 py-3.5 text-center bg-teal-50/40 text-teal-800">Petrol Deliver</th>
+                <th class="px-6 py-3.5 text-center bg-teal-50/40 text-teal-800">Petrol Sold</th>
+                <th class="px-6 py-3.5 text-center bg-teal-50/40 text-teal-800 font-bold">Expected Dip</th>
+                <th class="px-6 py-3.5 text-center bg-teal-50/40 text-teal-800 font-bold">Ending Dip</th>
+                <th class="px-6 py-3.5 text-center bg-teal-50/40 text-teal-800">Variance</th>
+              </tr>
+            </thead>
+            <tbody id="tankTableBody" class="divide-y divide-slate-100 font-medium text-center">
+              <tr>
+                <td colspan="13" class="text-center text-slate-400 py-12">Loading daily dip reports...</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- ==========================================
+       MODALS & FORMS
+       ========================================== -->
+
+  <!-- Modal 1: Open Shift Modal (Attendant) -->
+  <div id="openShiftModal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+    <div class="bg-white rounded-2xl max-w-md w-full shadow-2xl p-6 relative">
+      <h3 class="text-base font-bold text-slate-900 border-b border-slate-100 pb-3 mb-5">Open New Sales Shift</h3>
+
+      <form onsubmit="handleOpenShift(event)" class="space-y-4">
+        <div>
+          <label class="block text-xs font-semibold text-slate-600 mb-1.5">Opening Float Cash ($)</label>
+          <input type="number" step="0.01" id="openFloatInput" required class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm" placeholder="100.00">
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-slate-600 mb-1.5">Diesel Pump Meter Start Reading (Liters)</label>
+          <input type="number" step="0.01" id="openDieselMeterInput" required class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm" placeholder="e.g. 1000.0">
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-slate-600 mb-1.5">Petrol Pump Meter Start Reading (Liters)</label>
+          <input type="number" step="0.01" id="openPetrolMeterInput" required class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm" placeholder="e.g. 5000.0">
+        </div>
+
+        <div class="flex space-x-3 pt-4 border-t border-slate-50">
+          <button type="button" onclick="toggleModal('openShiftModal', false)" class="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold rounded-xl text-xs">Cancel</button>
+          <button type="submit" class="flex-1 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl text-xs shadow-md shadow-indigo-600/10">Start Shift</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal 2: Log Expense Modal (Attendant) -->
+  <div id="logExpenseModal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+    <div class="bg-white rounded-2xl max-w-md w-full shadow-2xl p-6 relative">
+      <h3 class="text-base font-bold text-slate-900 border-b border-slate-100 pb-3 mb-5">Log Shift Expense</h3>
+
+      <form onsubmit="handleLogExpense(event)" class="space-y-4">
+        <div>
+          <label class="block text-xs font-semibold text-slate-600 mb-1.5">Expense Amount ($)</label>
+          <input type="number" step="0.01" id="expenseAmountInput" required class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm placeholder:text-slate-300" placeholder="0.00">
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-slate-600 mb-1.5">Category</label>
+          <select id="expenseCategoryInput" required class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white">
+            <option value="Generator Fuel">Generator Fuel</option>
+            <option value="Cleaning">Cleaning / Maintenance</option>
+            <option value="Utilities">Utilities</option>
+            <option value="Staff Refreshments">Staff Refreshments</option>
+            <option value="Other">Other</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-slate-600 mb-1.5">Description</label>
+          <input type="text" id="expenseDescInput" required class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm" placeholder="e.g. Purchased cleaning rags for island">
+        </div>
+
+        <div class="flex space-x-3 pt-4 border-t border-slate-50">
+          <button type="button" onclick="toggleModal('logExpenseModal', false)" class="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold rounded-xl text-xs">Cancel</button>
+          <button type="submit" class="flex-1 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl text-xs shadow-md shadow-indigo-600/10">Log Expense</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal 3: Log Credit Sale Modal (Attendant) -->
+  <div id="logCreditSaleModal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+    <div class="bg-white rounded-2xl max-w-md w-full shadow-2xl p-6 relative">
+      <h3 class="text-base font-bold text-slate-900 border-b border-slate-100 pb-3 mb-5">Record Corporate Credit Sale</h3>
+
+      <form onsubmit="handleLogCreditSale(event)" class="space-y-4">
+        <div>
+          <label class="block text-xs font-semibold text-slate-600 mb-1.5">Select Corporate Client</label>
+          <select id="creditCustomerInput" required class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white">
+            <!-- Populated via API -->
+          </select>
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-slate-600 mb-1.5">Fuel Type</label>
+          <select id="creditFuelInput" required class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white">
+            <option value="diesel">Diesel</option>
+            <option value="petrol">Petrol</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-slate-600 mb-1.5">Quantity Sold (Liters)</label>
+          <input type="number" step="0.01" id="creditLitersInput" required class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm" placeholder="e.g. 150">
+        </div>
+
+        <div class="flex space-x-3 pt-4 border-t border-slate-50">
+          <button type="button" onclick="toggleModal('logCreditSaleModal', false)" class="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold rounded-xl text-xs">Cancel</button>
+          <button type="submit" class="flex-1 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs shadow-md shadow-emerald-600/10">Record Sale</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal 4: Close Shift Modal (Attendant) -->
+  <div id="closeShiftModal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+    <div class="bg-white rounded-2xl max-w-md w-full shadow-2xl p-6 relative">
+      <h3 class="text-base font-bold text-slate-900 border-b border-slate-100 pb-3 mb-5">Close Shift & Reconcile</h3>
+
+      <form onsubmit="handleCloseShift(event)" class="space-y-4">
+        <div>
+          <label class="block text-xs font-semibold text-slate-600 mb-1.5">Diesel Pump Meter End Reading (Liters)</label>
+          <input type="number" step="0.01" id="closeDieselMeterInput" required class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm" placeholder="Must be higher than start reading">
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-slate-600 mb-1.5">Petrol Pump Meter End Reading (Liters)</label>
+          <input type="number" step="0.01" id="closePetrolMeterInput" required class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm" placeholder="Must be higher than start reading">
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-slate-600 mb-1.5">Physical Cash Handed Over ($)</label>
+          <input type="number" step="0.01" id="closeCashInput" required class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm" placeholder="Count and enter exact amount">
+        </div>
+
+        <div class="flex space-x-3 pt-4 border-t border-slate-50">
+          <button type="button" onclick="toggleModal('closeShiftModal', false)" class="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold rounded-xl text-xs">Cancel</button>
+          <button type="submit" class="flex-1 py-2.5 bg-red-600 hover:bg-red-700 text-white font-bold rounded-xl text-xs shadow-md shadow-red-600/10">Reconcile & Close</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal 5: Create Customer Modal (Accountant) -->
+  <div id="createCustomerModal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+    <div class="bg-white rounded-2xl max-w-md w-full shadow-2xl p-6 relative">
+      <h3 class="text-base font-bold text-slate-900 border-b border-slate-100 pb-3 mb-5">Create Corporate Customer</h3>
+
+      <form onsubmit="handleCreateCustomer(event)" class="space-y-4">
+        <div>
+          <label class="block text-xs font-semibold text-slate-600 mb-1.5">Corporate Company Name</label>
+          <input type="text" id="custNameInput" required class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm" placeholder="e.g. Apex Haulers Ltd">
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-slate-600 mb-1.5">Custom Diesel Rate ($ per Liter) - Optional</label>
+          <input type="number" step="0.01" id="custCustomDieselInput" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm" placeholder="Leave empty for standard rate">
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-slate-600 mb-1.5">Approved Credit Limit ($)</label>
+          <input type="number" step="0.01" id="custLimitInput" required class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm" placeholder="5000.00">
+        </div>
+
+        <div class="flex space-x-3 pt-4 border-t border-slate-50">
+          <button type="button" onclick="toggleModal('createCustomerModal', false)" class="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold rounded-xl text-xs">Cancel</button>
+          <button type="submit" class="flex-1 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl text-xs shadow-md shadow-indigo-600/10">Create Customer</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal 6: Record Dip Readings Modal (Accountant) -->
+  <div id="recordDipModal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+    <div class="bg-white rounded-2xl max-w-lg w-full shadow-2xl p-6 relative max-h-[90vh] overflow-y-auto">
+      <h3 class="text-base font-bold text-slate-900 border-b border-slate-100 pb-3 mb-5">Daily Tank Dips & Supplier Deliveries</h3>
+
+      <form onsubmit="handleRecordDips(event)" class="space-y-5">
+        <div>
+          <label class="block text-xs font-semibold text-slate-600 mb-1.5">Operational Date</label>
+          <input type="date" id="dipDateInput" required class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm">
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 border-t border-slate-100 pt-4">
+          <!-- Diesel Dips -->
+          <div class="space-y-3">
+            <h4 class="text-xs font-bold text-orange-600 uppercase tracking-wider mb-2">Diesel Tank (Liters)</h4>
+            <div>
+              <label class="block text-[10px] font-semibold text-slate-500 mb-1">Starting Physical Stock</label>
+              <input type="number" step="0.01" id="dipDieselStart" required class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm" placeholder="e.g. 5000">
+            </div>
+            <div>
+              <label class="block text-[10px] font-semibold text-slate-500 mb-1">Supplier Delivery Received</label>
+              <input type="number" step="0.01" id="dipDieselDeliv" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm" placeholder="0 if none">
+            </div>
+            <div>
+              <label class="block text-[10px] font-semibold text-slate-500 mb-1">Ending Physical Stock (Dipstick)</label>
+              <input type="number" step="0.01" id="dipDieselEnd" required class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm" placeholder="e.g. 4800">
+            </div>
+          </div>
+
+          <!-- Petrol Dips -->
+          <div class="space-y-3">
+            <h4 class="text-xs font-bold text-teal-600 uppercase tracking-wider mb-2">Petrol Tank (Liters)</h4>
+            <div>
+              <label class="block text-[10px] font-semibold text-slate-500 mb-1">Starting Physical Stock</label>
+              <input type="number" step="0.01" id="dipPetrolStart" required class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm" placeholder="e.g. 8000">
+            </div>
+            <div>
+              <label class="block text-[10px] font-semibold text-slate-500 mb-1">Supplier Delivery Received</label>
+              <input type="number" step="0.01" id="dipPetrolDeliv" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm" placeholder="0 if none">
+            </div>
+            <div>
+              <label class="block text-[10px] font-semibold text-slate-500 mb-1">Ending Physical Stock (Dipstick)</label>
+              <input type="number" step="0.01" id="dipPetrolEnd" required class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm" placeholder="e.g. 7800">
+            </div>
+          </div>
+        </div>
+
+        <div class="flex space-x-3 pt-5 border-t border-slate-50">
+          <button type="button" onclick="toggleModal('recordDipModal', false)" class="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold rounded-xl text-xs">Cancel</button>
+          <button type="submit" class="flex-1 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl text-xs shadow-md shadow-indigo-600/10">Reconcile Inventory</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal 7: Shift Detail Review & Approve Modal (Accountant) -->
+  <div id="approveShiftModal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+    <div class="bg-white rounded-2xl max-w-lg w-full shadow-2xl p-6 relative max-h-[90vh] overflow-y-auto">
+      <h3 class="text-base font-bold text-slate-900 border-b border-slate-100 pb-3 mb-4">Shift Reconciliation Report</h3>
+
+      <div id="reconcileDetailContent" class="space-y-6 text-xs text-slate-600">
+        <!-- Dyn pop -->
+      </div>
+
+      <form onsubmit="handleApproveShift(event)" class="space-y-4 mt-6 border-t border-slate-100 pt-4">
+        <input type="hidden" id="approveShiftId">
+        <div>
+          <label class="block text-xs font-semibold text-slate-600 mb-1.5">Reconciliation / Audit Comments</label>
+          <textarea id="approveNotes" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-xs" rows="2" placeholder="e.g. Shift reviewed. Shortage of $9.50 logged to John Doe's payroll account."></textarea>
+        </div>
+
+        <div class="flex space-x-3 pt-2">
+          <button type="button" onclick="toggleModal('approveShiftModal', false)" class="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold rounded-xl text-xs">Cancel</button>
+          <button type="submit" class="flex-1 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl text-xs shadow-md shadow-indigo-600/10">Approve & Lock Shift</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+
+  <!-- Footer -->
+  <footer class="bg-white border-t border-slate-150 py-6 text-center text-xs text-slate-400 mt-12">
+    <p>© 2026 Anavic Gas Station Management Solutions. All rights reserved.</p>
+  </footer>
+
+  <!-- App Main Javascript Code -->
+  <script src="/app.js"></script>
+</body>
+</html>
