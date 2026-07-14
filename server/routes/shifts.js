@@ -44,9 +44,9 @@ router.get('/active', requireAuth, requireRole('attendant'), (req, res) => {
   }
 });
 
-// POST /api/shifts/open - Open a new shift
+// POST /api/shifts/open - Open a new shift (Attendants can input current pump selling prices)
 router.post('/open', requireAuth, requireRole('attendant'), (req, res) => {
-  const { opening_float, diesel_start_meter, petrol_start_meter } = req.body;
+  const { opening_float, diesel_start_meter, petrol_start_meter, diesel_price, petrol_price } = req.body;
 
   if (opening_float === undefined || diesel_start_meter === undefined || petrol_start_meter === undefined) {
     return res.status(400).json({ error: 'Opening float, diesel, and petrol start meters are required.' });
@@ -67,10 +67,17 @@ router.post('/open', requireAuth, requireRole('attendant'), (req, res) => {
       return res.status(400).json({ error: 'You already have an open shift. Please close it first.' });
     }
 
-    // Get current fuel prices
+    // Determine selling prices: If attendant inputs them, use them; else fallback to global prices
+    let activeDieselPrice = parseFloat(diesel_price);
+    let activePetrolPrice = parseFloat(petrol_price);
+
     const prices = db.prepare('SELECT * FROM fuel_prices').all();
-    const dieselPrice = prices.find(p => p.fuel_type === 'diesel')?.price_per_liter || 1100.0;
-    const petrolPrice = prices.find(p => p.fuel_type === 'petrol')?.price_per_liter || 950.0;
+    if (isNaN(activeDieselPrice) || activeDieselPrice <= 0) {
+      activeDieselPrice = prices.find(p => p.fuel_type === 'diesel')?.price_per_liter || 1100.0;
+    }
+    if (isNaN(activePetrolPrice) || activePetrolPrice <= 0) {
+      activePetrolPrice = prices.find(p => p.fuel_type === 'petrol')?.price_per_liter || 950.0;
+    }
 
     // Use transaction to create shift and insert meters
     const openShiftTx = db.transaction(() => {
@@ -86,8 +93,8 @@ router.post('/open', requireAuth, requireRole('attendant'), (req, res) => {
         VALUES (?, ?, ?, ?)
       `);
 
-      insertMeter.run(shiftId, 'diesel', dieselStart, dieselPrice);
-      insertMeter.run(shiftId, 'petrol', petrolStart, petrolPrice);
+      insertMeter.run(shiftId, 'diesel', dieselStart, activeDieselPrice);
+      insertMeter.run(shiftId, 'petrol', petrolStart, activePetrolPrice);
 
       return shiftId;
     });
@@ -164,6 +171,10 @@ router.post('/credit-sale', requireAuth, requireRole('attendant'), (req, res) =>
       return res.status(404).json({ error: 'Credit customer not found.' });
     }
 
+    if (customer.status !== 'active') {
+      return res.status(400).json({ error: `Corporate account '${customer.name}' is currently INACTIVE. Credit sales are blocked.` });
+    }
+
     // Determine unit price
     let pricePerLiter;
     if (fuel_type === 'diesel' && customer.custom_diesel_price !== null) {
@@ -213,9 +224,9 @@ router.post('/credit-sale', requireAuth, requireRole('attendant'), (req, res) =>
   }
 });
 
-// POST /api/shifts/close - Close active shift and calculate final reconciliation
+// POST /api/shifts/close - Close active shift, record POS Card Sales, and calculate final reconciliation
 router.post('/close', requireAuth, requireRole('attendant'), (req, res) => {
-  const { diesel_end_meter, petrol_end_meter, closing_cash_actual } = req.body;
+  const { diesel_end_meter, petrol_end_meter, closing_cash_actual, closing_pos_actual } = req.body;
 
   if (diesel_end_meter === undefined || petrol_end_meter === undefined || closing_cash_actual === undefined) {
     return res.status(400).json({ error: 'End meters and actual closing cash are required.' });
@@ -224,8 +235,9 @@ router.post('/close', requireAuth, requireRole('attendant'), (req, res) => {
   const dieselEnd = parseFloat(diesel_end_meter);
   const petrolEnd = parseFloat(petrol_end_meter);
   const cashActual = parseFloat(closing_cash_actual);
+  const posActual = parseFloat(closing_pos_actual || 0);
 
-  if (isNaN(dieselEnd) || isNaN(petrolEnd) || isNaN(cashActual)) {
+  if (isNaN(dieselEnd) || isNaN(petrolEnd) || isNaN(cashActual) || isNaN(posActual)) {
     return res.status(400).json({ error: 'All inputs must be valid numbers.' });
   }
 
@@ -264,8 +276,8 @@ router.post('/close', requireAuth, requireRole('attendant'), (req, res) => {
     const petrolRevenue = petrolLiters * petrolMeter.unit_price;
     const totalRevenue = dieselRevenue + petrolRevenue;
 
-    // Expected cash calculation
-    const expectedCash = totalRevenue - totalCreditSales - totalExpenses + shift.opening_float;
+    // Expected cash calculation (POS Card Sales represent bank deposit, so they are deducted from cash expected in drawer)
+    const expectedCash = totalRevenue - totalCreditSales - totalExpenses - posActual + shift.opening_float;
     const variance = cashActual - expectedCash;
 
     // Close Shift transaction
@@ -276,12 +288,12 @@ router.post('/close', requireAuth, requireRole('attendant'), (req, res) => {
       db.prepare('UPDATE shift_meters SET end_meter = ? WHERE shift_id = ? AND fuel_type = ?')
         .run(petrolEnd, shift.id, 'petrol');
 
-      // Update shift header
+      // Update shift header with actual physical cash and actual POS sales
       db.prepare(`
         UPDATE shifts
-        SET status = 'closed', closed_at = datetime('now'), closing_cash_actual = ?
+        SET status = 'closed', closed_at = datetime('now'), closing_cash_actual = ?, closing_pos_actual = ?
         WHERE id = ?
-      `).run(cashActual, shift.id);
+      `).run(cashActual, posActual, shift.id);
     });
 
     closeShiftTx();
@@ -299,6 +311,7 @@ router.post('/close', requireAuth, requireRole('attendant'), (req, res) => {
         openingFloat: shift.opening_float,
         expectedCash,
         actualCashCollected: cashActual,
+        actualPosCollected: posActual,
         variance
       }
     });
@@ -359,7 +372,8 @@ router.get('/', requireAuth, requireAnyRole(['accountant', 'boss']), (req, res) 
       const totalExpenses = expenses.reduce((sum, e) => sum + e.amount, 0);
       const totalCreditSales = creditSales.reduce((sum, c) => sum + c.total_amount, 0);
 
-      const expectedCash = totalRevenue - totalCreditSales - totalExpenses + shift.opening_float;
+      // expectedCash uses POS deduction
+      const expectedCash = totalRevenue - totalCreditSales - totalExpenses - shift.closing_pos_actual + shift.opening_float;
       const variance = shift.status === 'open' ? 0 : (shift.closing_cash_actual - expectedCash);
 
       return {
@@ -431,6 +445,7 @@ router.get('/analytics', requireAuth, requireAnyRole(['accountant', 'boss']), (r
     let totalExpenses = 0;
     let totalCreditSales = 0;
     let totalCashCollected = 0;
+    let totalPosCollected = 0;
     let totalVariance = 0;
     let totalDieselLiters = 0;
     let totalPetrolLiters = 0;
@@ -453,13 +468,15 @@ router.get('/analytics', requireAuth, requireAnyRole(['accountant', 'boss']), (r
       const tExp = expenses.reduce((sum, e) => sum + e.amount, 0);
       const tCredit = creditSales.reduce((sum, c) => sum + c.total_amount, 0);
 
-      const expectedCash = tRev - tCredit - tExp + shift.opening_float;
+      // Expected Cash deducts POS
+      const expectedCash = tRev - tCredit - tExp - shift.closing_pos_actual + shift.opening_float;
       const variance = shift.closing_cash_actual - expectedCash;
 
       totalRevenue += tRev;
       totalExpenses += tExp;
       totalCreditSales += tCredit;
       totalCashCollected += shift.closing_cash_actual;
+      totalPosCollected += shift.closing_pos_actual;
       totalVariance += variance;
       totalDieselLiters += dLiters;
       totalPetrolLiters += pLiters;
@@ -486,6 +503,7 @@ router.get('/analytics', requireAuth, requireAnyRole(['accountant', 'boss']), (r
         totalExpenses,
         totalCreditSales,
         totalCashCollected,
+        totalPosCollected,
         totalVariance,
         totalDieselLiters,
         totalPetrolLiters,

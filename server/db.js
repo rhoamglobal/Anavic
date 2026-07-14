@@ -36,6 +36,7 @@ function initDatabase() {
       closed_at DATETIME,
       opening_float REAL DEFAULT 0.0,
       closing_cash_actual REAL DEFAULT 0.0,
+      closing_pos_actual REAL DEFAULT 0.0,
       reconciled_at DATETIME,
       reconciled_by INTEGER,
       reconciliation_notes TEXT,
@@ -70,6 +71,7 @@ function initDatabase() {
       custom_diesel_price REAL,
       credit_limit REAL NOT NULL DEFAULT 5000.0,
       balance REAL NOT NULL DEFAULT 0.0,
+      status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active', 'inactive')),
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     );
 
@@ -83,7 +85,7 @@ function initDatabase() {
       total_amount REAL NOT NULL,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (shift_id) REFERENCES shifts(id) ON DELETE CASCADE,
-      FOREIGN KEY (customer_id) REFERENCES credit_customers(id)
+      FOREIGN KEY (customer_id) REFERENCES credit_customers(id) ON DELETE CASCADE
     );
 
     CREATE TABLE IF NOT EXISTS customer_payments (
@@ -94,7 +96,7 @@ function initDatabase() {
       payment_method TEXT NOT NULL CHECK(payment_method IN ('Bank Transfer', 'Cash', 'Cheque')),
       reference_no TEXT,
       recorded_by INTEGER NOT NULL,
-      FOREIGN KEY (customer_id) REFERENCES credit_customers(id),
+      FOREIGN KEY (customer_id) REFERENCES credit_customers(id) ON DELETE CASCADE,
       FOREIGN KEY (recorded_by) REFERENCES users(id)
     );
 
@@ -157,7 +159,7 @@ function seedDefaultData() {
   const customerCount = db.prepare('SELECT count(*) as count FROM credit_customers').get().count;
   if (customerCount === 0) {
     const insertCustomer = db.prepare(`
-      INSERT INTO credit_customers (name, custom_diesel_price, credit_limit, balance) VALUES (?, ?, ?, ?)
+      INSERT INTO credit_customers (name, custom_diesel_price, credit_limit, balance, status) VALUES (?, ?, ?, ?, 'active')
     `);
     // Custom prices in Naira
     insertCustomer.run('Swift Logistics', 1050.0, 5000000.0, 0.0);

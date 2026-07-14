@@ -93,4 +93,84 @@ router.post('/register', requireAuth, requireAnyRole(['accountant', 'boss']), (r
   }
 });
 
+// GET /api/auth/users - List all users (Accountant & Boss only)
+router.get('/users', requireAuth, requireAnyRole(['accountant', 'boss']), (req, res) => {
+  try {
+    const users = db.prepare('SELECT id, username, role, full_name, created_at FROM users ORDER BY full_name ASC').all();
+    res.json(users);
+  } catch (err) {
+    console.error('List users error:', err);
+    res.status(500).json({ error: 'Failed to retrieve staff directory.' });
+  }
+});
+
+// POST /api/auth/users/:id/password - Change a user's password (Accountant & Boss only)
+router.post('/users/:id/password', requireAuth, requireAnyRole(['accountant', 'boss']), (req, res) => {
+  const targetUserId = parseInt(req.params.id);
+  const { password } = req.body;
+
+  if (isNaN(targetUserId)) {
+    return res.status(400).json({ error: 'Invalid user ID.' });
+  }
+
+  if (!password || password.trim() === '') {
+    return res.status(400).json({ error: 'New password is required.' });
+  }
+
+  try {
+    const user = db.prepare('SELECT id FROM users WHERE id = ?').get(targetUserId);
+    if (!user) {
+      return res.status(404).json({ error: 'User account not found.' });
+    }
+
+    const salt = bcrypt.genSaltSync(10);
+    const hashedPassword = bcrypt.hashSync(password, salt);
+
+    db.prepare('UPDATE users SET password = ? WHERE id = ?').run(hashedPassword, targetUserId);
+
+    res.json({ message: 'User password updated successfully.' });
+  } catch (err) {
+    console.error('Update password error:', err);
+    res.status(500).json({ error: 'Failed to update user password.' });
+  }
+});
+
+// DELETE /api/auth/users/:id - Delete a user's account (Accountant & Boss only)
+router.delete('/users/:id', requireAuth, requireAnyRole(['accountant', 'boss']), (req, res) => {
+  const targetUserId = parseInt(req.params.id);
+
+  if (isNaN(targetUserId)) {
+    return res.status(400).json({ error: 'Invalid user ID.' });
+  }
+
+  // Prevent self-deletion
+  if (req.user.id === targetUserId) {
+    return res.status(400).json({ error: 'Action denied. You cannot delete your own logged-in account.' });
+  }
+
+  try {
+    const user = db.prepare('SELECT id FROM users WHERE id = ?').get(targetUserId);
+    if (!user) {
+      return res.status(404).json({ error: 'User account not found.' });
+    }
+
+    // Use transaction to ensure shift constraints or other records remain intact
+    // (In our SQLite schemas, deletions are clean; shifts keep references but we can check if active shifts are open first)
+    const activeShift = db.prepare(`
+      SELECT id FROM shifts WHERE attendant_id = ? AND status = 'open'
+    `).get(targetUserId);
+
+    if (activeShift) {
+      return res.status(400).json({ error: 'Action denied. Attendant has an active open shift. Close the shift before deleting.' });
+    }
+
+    db.prepare('DELETE FROM users WHERE id = ?').run(targetUserId);
+
+    res.json({ message: 'User account deleted successfully.' });
+  } catch (err) {
+    console.error('Delete user error:', err);
+    res.status(500).json({ error: 'Failed to delete user account.' });
+  }
+});
+
 module.exports = router;

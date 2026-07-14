@@ -3,7 +3,7 @@ const router = express.Router();
 const db = require('../db');
 const { requireAuth, requireRole, requireAnyRole } = require('../middleware');
 
-// GET /api/customers - Get all credit customers
+// GET /api/customers - Get all credit customers (including status check)
 router.get('/', requireAuth, (req, res) => {
   try {
     const customers = db.prepare('SELECT * FROM credit_customers ORDER BY name ASC').all();
@@ -22,7 +22,7 @@ router.post('/', requireAuth, requireAnyRole(['accountant', 'boss']), (req, res)
     return res.status(400).json({ error: 'Customer name is required.' });
   }
 
-  const customPrice = custom_diesel_price !== undefined && custom_diesel_price !== '' ? parseFloat(custom_diesel_price) : null;
+  const customPrice = custom_diesel_price !== undefined && custom_diesel_price !== '' && custom_diesel_price !== null ? parseFloat(custom_diesel_price) : null;
   const limit = credit_limit !== undefined ? parseFloat(credit_limit) : 5000.0;
 
   if (customPrice !== null && (isNaN(customPrice) || customPrice < 0)) {
@@ -40,8 +40,8 @@ router.post('/', requireAuth, requireAnyRole(['accountant', 'boss']), (req, res)
     }
 
     const result = db.prepare(`
-      INSERT INTO credit_customers (name, custom_diesel_price, credit_limit, balance)
-      VALUES (?, ?, ?, 0.0)
+      INSERT INTO credit_customers (name, custom_diesel_price, credit_limit, balance, status)
+      VALUES (?, ?, ?, 0.0, 'active')
     `).run(name, customPrice, limit);
 
     res.status(201).json({
@@ -51,6 +51,89 @@ router.post('/', requireAuth, requireAnyRole(['accountant', 'boss']), (req, res)
   } catch (err) {
     console.error('Error creating customer:', err);
     res.status(500).json({ error: 'Failed to create credit customer.' });
+  }
+});
+
+// PUT /api/customers/:id - Edit corporate customer (Accountant & Boss only)
+router.put('/:id', requireAuth, requireAnyRole(['accountant', 'boss']), (req, res) => {
+  const customerId = parseInt(req.params.id);
+  const { name, custom_diesel_price, credit_limit, status } = req.body;
+
+  if (isNaN(customerId)) {
+    return res.status(400).json({ error: 'Invalid customer ID.' });
+  }
+
+  if (!name) {
+    return res.status(400).json({ error: 'Customer name is required.' });
+  }
+
+  if (status && status !== 'active' && status !== 'inactive') {
+    return res.status(400).json({ error: 'Invalid status. Must be active or inactive.' });
+  }
+
+  const customPrice = custom_diesel_price !== undefined && custom_diesel_price !== '' && custom_diesel_price !== null ? parseFloat(custom_diesel_price) : null;
+  const limit = credit_limit !== undefined ? parseFloat(credit_limit) : 5000.0;
+
+  if (customPrice !== null && (isNaN(customPrice) || customPrice < 0)) {
+    return res.status(400).json({ error: 'Custom diesel price must be a positive number.' });
+  }
+  if (isNaN(limit) || limit < 0) {
+    return res.status(400).json({ error: 'Credit limit must be a positive number.' });
+  }
+
+  try {
+    const customer = db.prepare('SELECT id FROM credit_customers WHERE id = ?').get(customerId);
+    if (!customer) {
+      return res.status(404).json({ error: 'Credit customer not found.' });
+    }
+
+    // Check duplicate name
+    const existing = db.prepare('SELECT id FROM credit_customers WHERE name = ? AND id != ?').get(name, customerId);
+    if (existing) {
+      return res.status(400).json({ error: 'A corporate customer with this name already exists.' });
+    }
+
+    db.prepare(`
+      UPDATE credit_customers
+      SET name = ?, custom_diesel_price = ?, credit_limit = ?, status = ?
+      WHERE id = ?
+    `).run(name, customPrice, limit, status || 'active', customerId);
+
+    res.json({ message: 'Credit customer updated successfully.' });
+  } catch (err) {
+    console.error('Error updating customer:', err);
+    res.status(500).json({ error: 'Failed to update credit customer.' });
+  }
+});
+
+// DELETE /api/customers/:id - Delete corporate customer (Accountant & Boss only)
+router.delete('/:id', requireAuth, requireAnyRole(['accountant', 'boss']), (req, res) => {
+  const customerId = parseInt(req.params.id);
+
+  if (isNaN(customerId)) {
+    return res.status(400).json({ error: 'Invalid customer ID.' });
+  }
+
+  try {
+    const customer = db.prepare('SELECT * FROM credit_customers WHERE id = ?').get(customerId);
+    if (!customer) {
+      return res.status(404).json({ error: 'Credit customer not found.' });
+    }
+
+    // Accounting safeguard: cannot delete if they have an active outstanding balance
+    if (customer.balance !== 0.0) {
+      return res.status(400).json({
+        error: `Action denied. This customer has an outstanding balance of ₦${customer.balance.toLocaleString()}. ` +
+               `They must pay off their balance in full (balance must be 0) before their profile can be deleted.`
+      });
+    }
+
+    db.prepare('DELETE FROM credit_customers WHERE id = ?').run(customerId);
+
+    res.json({ message: 'Credit customer deleted successfully.' });
+  } catch (err) {
+    console.error('Error deleting customer:', err);
+    res.status(500).json({ error: 'Failed to delete credit customer.' });
   }
 });
 

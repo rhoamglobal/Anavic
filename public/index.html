@@ -110,7 +110,7 @@
           <i class="fa-solid fa-lock-open text-3xl"></i>
         </div>
         <h3 class="text-xl font-bold text-slate-950 mb-2">Ready to Start Your Shift?</h3>
-        <p class="text-slate-500 text-sm max-w-md mx-auto mb-8">Before starting, please record your assigned pump's opening nozzle meter readings and your starting cash float in Naira.</p>
+        <p class="text-slate-500 text-sm max-w-md mx-auto mb-8">Before starting, please record your assigned pump's opening nozzle meter readings, your starting cash float, and active selling prices.</p>
 
         <button onclick="toggleModal('openShiftModal', true)" class="px-6 py-3 bg-red-600 hover:bg-red-700 text-white font-bold rounded-xl shadow-lg shadow-red-600/20 transition duration-200 text-sm">
           <i class="fa-solid fa-play mr-2"></i> Open New Shift
@@ -258,7 +258,7 @@
           <i class="fa-solid fa-bucket mr-1"></i> Tank Dip & Wet Stock
         </button>
         <button onclick="switchAccountantTab('staffTab')" id="btn-staffTab" class="py-3 px-6 text-sm font-semibold border-b-2 border-transparent text-slate-500 hover:text-slate-800 hover:border-slate-300 focus:outline-none transition">
-          <i class="fa-solid fa-users mr-1"></i> Staff Registry
+          <i class="fa-solid fa-users mr-1"></i> Staff Directory
         </button>
       </div>
 
@@ -408,9 +408,9 @@
 
             <!-- Detail Statement Panel -->
             <div id="ledgerDetailState" class="hidden space-y-6">
-              <div class="flex items-start justify-between border-b border-slate-100 pb-4">
+              <div class="flex flex-col sm:flex-row sm:items-start justify-between border-b border-slate-100 pb-4 gap-4">
                 <div>
-                  <h4 id="ledgerCustomerName" class="text-base font-bold text-slate-900">Globex Corp</h4>
+                  <h4 id="ledgerCustomerName" class="text-base font-bold text-slate-900 flex items-center gap-2">Globex Corp <span id="ledgerCustomerStatusBadge" class="text-[9px] uppercase px-1.5 py-0.5 rounded font-bold">Active</span></h4>
                   <div class="flex items-center space-x-3 mt-1.5 text-[11px] text-slate-400">
                     <span id="ledgerCustomerPrice">Custom Diesel: ₦1050/L</span>
                     <span>•</span>
@@ -418,9 +418,13 @@
                   </div>
                 </div>
 
-                <div class="text-right">
-                  <span class="block text-[10px] text-slate-400 font-bold uppercase">OUTSTANDING BALANCE</span>
-                  <span id="ledgerCustomerBalance" class="text-xl font-bold text-red-600">₦0.00</span>
+                <div class="flex items-center space-x-2">
+                  <button onclick="openEditCustomerModal()" class="px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-[10px] font-bold rounded-lg transition"><i class="fa-solid fa-pen-to-square"></i> Edit Customer</button>
+                  <button onclick="handleDeleteCustomer()" class="px-2.5 py-1.5 bg-red-50 hover:bg-red-100 text-red-600 text-[10px] font-bold rounded-lg transition"><i class="fa-solid fa-trash"></i> Delete Account</button>
+                  <div class="text-right ml-4">
+                    <span class="block text-[9px] text-slate-400 font-bold uppercase tracking-wide">BALANCE DUE</span>
+                    <span id="ledgerCustomerBalance" class="text-lg font-bold text-red-600">₦0.00</span>
+                  </div>
                 </div>
               </div>
 
@@ -513,27 +517,45 @@
         <div class="flex items-center justify-between">
           <div>
             <h3 class="text-lg font-bold text-slate-900">Staff & Attendant Registry</h3>
-            <p class="text-xs text-slate-400">Register unique accounts for your pump attendants and accountants to secure shift entries.</p>
+            <p class="text-xs text-slate-400">Register unique logins, reset passwords, or remove staff members.</p>
           </div>
           <button onclick="toggleModal('createUserModal', true)" class="px-4 py-2 bg-red-600 hover:bg-red-700 text-white font-bold rounded-lg text-xs shadow-sm">
             <i class="fa-solid fa-user-plus mr-1"></i> Register New Staff Account
           </button>
         </div>
 
-        <!-- Static display panel describing credentials -->
-        <div class="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm max-w-2xl">
-          <h4 class="text-sm font-bold text-slate-900 mb-2">Unique Login Accountability</h4>
-          <p class="text-xs text-slate-500 leading-relaxed mb-4">
-            Creating separate accounts for every attendant ensures that shifts and cash registers are fully audited under the correct person.
-            When an attendant opens a shift, their specific username is associated with the meters and drawer physical cash count.
-          </p>
-          <div class="bg-red-50 border border-red-100 rounded-xl p-4 text-xs text-red-800">
-            <strong>System Rules:</strong>
-            <ul class="list-disc pl-5 mt-2 space-y-1">
-              <li>Attendants can only access the sales entry and shift opening/closing screen.</li>
-              <li>Accountants can see dashboards, reconciliations, custom pricing, and record payments.</li>
-              <li>The Boss (CEO) has absolute administrative, reading, and auditing control.</li>
-            </ul>
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+          <!-- Directory Table Panel -->
+          <div class="lg:col-span-2 bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
+            <div class="px-6 py-4 border-b border-slate-150"><h4 class="text-sm font-bold text-slate-950">Active Users directory</h4></div>
+            <table class="min-w-full text-left text-xs divide-y divide-slate-100">
+              <thead class="bg-slate-50 text-slate-500 font-bold">
+                <tr>
+                  <th class="px-6 py-3">Full Name</th>
+                  <th class="px-6 py-3">Username</th>
+                  <th class="px-6 py-3">Role</th>
+                  <th class="px-6 py-3 text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody id="staffDirectoryBody" class="divide-y divide-slate-100 font-semibold text-slate-700">
+                <!-- Dyn pop -->
+              </tbody>
+            </table>
+          </div>
+
+          <div class="lg:col-span-1 bg-white p-6 rounded-2xl border border-slate-100 shadow-sm h-fit">
+            <h4 class="text-sm font-bold text-slate-900 mb-2">Unique Login Accountability</h4>
+            <p class="text-xs text-slate-500 leading-relaxed mb-4">
+              Creating separate accounts for every attendant ensures that shifts and cash registers are fully audited under the correct person.
+            </p>
+            <div class="bg-red-50 border border-red-100 rounded-xl p-4 text-xs text-red-800">
+              <strong>System Rules:</strong>
+              <ul class="list-disc pl-5 mt-2 space-y-1">
+                <li>Attendants can only access shift opening/closing & sales entry.</li>
+                <li>Accountants can see dashboards, pricing, and record payments.</li>
+                <li>The Boss (CEO) has absolute administrative, reading, and auditing control.</li>
+              </ul>
+            </div>
           </div>
         </div>
       </div>
@@ -556,12 +578,23 @@
           <input type="number" step="0.01" id="openFloatInput" required class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm" placeholder="e.g. 50000">
         </div>
         <div>
-          <label class="block text-xs font-semibold text-slate-600 mb-1.5">Diesel Pump Meter Start Reading (Liters)</label>
+          <label class="block text-xs font-semibold text-slate-600 mb-1.5">Diesel Pump Meter Start (Liters)</label>
           <input type="number" step="0.01" id="openDieselMeterInput" required class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm" placeholder="e.g. 1000.0">
         </div>
         <div>
-          <label class="block text-xs font-semibold text-slate-600 mb-1.5">Petrol Pump Meter Start Reading (Liters)</label>
+          <label class="block text-xs font-semibold text-slate-600 mb-1.5">Petrol Pump Meter Start (Liters)</label>
           <input type="number" step="0.01" id="openPetrolMeterInput" required class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm" placeholder="e.g. 5000.0">
+        </div>
+
+        <div class="grid grid-cols-2 gap-4 border-t border-slate-100 pt-4">
+          <div>
+            <label class="block text-xs font-semibold text-slate-600 mb-1.5">Diesel Selling Price (₦/L)</label>
+            <input type="number" step="1" id="openDieselPriceInput" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm bg-slate-50 font-bold" placeholder="e.g. 1100">
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-slate-600 mb-1.5">Petrol Selling Price (₦/L)</label>
+            <input type="number" step="1" id="openPetrolPriceInput" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm bg-slate-50 font-bold" placeholder="e.g. 950">
+          </div>
         </div>
 
         <div class="flex space-x-3 pt-4 border-t border-slate-50">
@@ -637,30 +670,53 @@
     </div>
   </div>
 
-  <!-- Modal 4: Close Shift Modal (Attendant) -->
+  <!-- Modal 4: Close Shift Modal with PREVIEW (Attendant) -->
   <div id="closeShiftModal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
     <div class="bg-white rounded-2xl max-w-md w-full shadow-2xl p-6 relative">
       <h3 class="text-base font-bold text-slate-900 border-b border-slate-100 pb-3 mb-5">Close Shift & Reconcile</h3>
 
-      <form onsubmit="handleCloseShift(event)" class="space-y-4">
+      <form onsubmit="handleTriggerShiftPreview(event)" class="space-y-4">
         <div>
-          <label class="block text-xs font-semibold text-slate-600 mb-1.5">Diesel Nozzle Meter End Reading (Liters)</label>
+          <label class="block text-xs font-semibold text-slate-600 mb-1.5">Diesel End Nozzle Meter (Liters)</label>
           <input type="number" step="0.01" id="closeDieselMeterInput" required class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm" placeholder="Must be higher than start reading">
         </div>
         <div>
-          <label class="block text-xs font-semibold text-slate-600 mb-1.5">Petrol Nozzle Meter End Reading (Liters)</label>
+          <label class="block text-xs font-semibold text-slate-600 mb-1.5">Petrol End Nozzle Meter (Liters)</label>
           <input type="number" step="0.01" id="closePetrolMeterInput" required class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm" placeholder="Must be higher than start reading">
         </div>
-        <div>
-          <label class="block text-xs font-semibold text-slate-600 mb-1.5">Physical Cash Drawer Count (₦)</label>
-          <input type="number" step="0.01" id="closeCashInput" required class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm" placeholder="Count and enter exact Naira amount">
+        <div class="grid grid-cols-2 gap-4">
+          <div>
+            <label class="block text-xs font-semibold text-slate-600 mb-1.5">Actual Cash in Drawer (₦)</label>
+            <input type="number" step="0.01" id="closeCashInput" required class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm" placeholder="Cash on hand">
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-slate-600 mb-1.5">Actual POS Card Sales (₦)</label>
+            <input type="number" step="0.01" id="closePosInput" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm" placeholder="POS terminal totals">
+          </div>
         </div>
 
         <div class="flex space-x-3 pt-4 border-t border-slate-50">
           <button type="button" onclick="toggleModal('closeShiftModal', false)" class="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold rounded-xl text-xs">Cancel</button>
-          <button type="submit" class="flex-1 py-2.5 bg-red-600 hover:bg-red-700 text-white font-bold rounded-xl text-xs shadow-md">Reconcile & Close</button>
+          <button type="submit" class="flex-1 py-2.5 bg-red-600 hover:bg-red-700 text-white font-bold rounded-xl text-xs shadow-md">Preview Sales Summary</button>
         </div>
       </form>
+    </div>
+  </div>
+
+  <!-- Modal 4b: Shift Closing Preview (Allows corrections before submitting!) -->
+  <div id="closeShiftPreviewModal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+    <div class="bg-white rounded-2xl max-w-lg w-full shadow-2xl p-6 relative max-h-[90vh] overflow-y-auto">
+      <h3 class="text-base font-bold text-slate-900 border-b border-slate-100 pb-3 mb-4 text-red-600"><i class="fa-solid fa-file-shield mr-2"></i> Attendant Sales Preview</h3>
+      <p class="text-xs text-slate-500 mb-4">Please review these calculations carefully. If any figures are incorrect, click "Edit Readings" to make corrections. Otherwise, click "Confirm & Submit Shift" to log the final report.</p>
+
+      <div id="previewContent" class="space-y-5 text-xs text-slate-600">
+        <!-- Dynamically rendered on preview trigger -->
+      </div>
+
+      <div class="flex space-x-3 pt-5 border-t border-slate-100 mt-6">
+        <button onclick="toggleModal('closeShiftPreviewModal', false); toggleModal('closeShiftModal', true);" class="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs"><i class="fa-solid fa-pen-to-square"></i> Edit Readings / Back</button>
+        <button onclick="handleConfirmShiftClose()" class="flex-1 py-2.5 bg-red-600 hover:bg-red-700 text-white font-bold rounded-xl text-xs shadow-md shadow-red-600/10"><i class="fa-solid fa-circle-check"></i> Confirm & Submit Shift</button>
+      </div>
     </div>
   </div>
 
@@ -686,6 +742,41 @@
         <div class="flex space-x-3 pt-4 border-t border-slate-50">
           <button type="button" onclick="toggleModal('createCustomerModal', false)" class="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold rounded-xl text-xs">Cancel</button>
           <button type="submit" class="flex-1 py-2.5 bg-red-600 hover:bg-red-700 text-white font-bold rounded-xl text-xs shadow-md">Create Customer</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal 5b: Edit Customer Modal (Accountant) -->
+  <div id="editCustomerModal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+    <div class="bg-white rounded-2xl max-w-md w-full shadow-2xl p-6 relative">
+      <h3 class="text-base font-bold text-slate-900 border-b border-slate-100 pb-3 mb-5">Edit Corporate Customer Account</h3>
+
+      <form onsubmit="handleEditCustomerSubmit(event)" class="space-y-4">
+        <input type="hidden" id="editCustId">
+        <div>
+          <label class="block text-xs font-semibold text-slate-600 mb-1.5">Corporate Company Name</label>
+          <input type="text" id="editCustNameInput" required class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm">
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-slate-600 mb-1.5">Custom Diesel Rate (₦ per Liter) - Optional</label>
+          <input type="number" step="1" id="editCustCustomDieselInput" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm" placeholder="Leave empty for standard rate">
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-slate-600 mb-1.5">Approved Credit Limit (₦)</label>
+          <input type="number" step="1" id="editCustLimitInput" required class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm">
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-slate-600 mb-1.5">Account Status</label>
+          <select id="editCustStatusInput" required class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white font-semibold">
+            <option value="active">Active (Can take fuel on credit)</option>
+            <option value="inactive">Inactive (Credit sales blocked)</option>
+          </select>
+        </div>
+
+        <div class="flex space-x-3 pt-4 border-t border-slate-50">
+          <button type="button" onclick="toggleModal('editCustomerModal', false)" class="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs">Cancel</button>
+          <button type="submit" class="flex-1 py-2.5 bg-red-600 hover:bg-red-700 text-white font-bold rounded-xl text-xs shadow-md">Update Customer</button>
         </div>
       </form>
     </div>
@@ -798,8 +889,32 @@
         </div>
 
         <div class="flex space-x-3 pt-4 border-t border-slate-50">
-          <button type="button" onclick="toggleModal('createUserModal', false)" class="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold rounded-xl text-xs">Cancel</button>
+          <button type="button" onclick="toggleModal('createUserModal', false)" class="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs">Cancel</button>
           <button type="submit" class="flex-1 py-2.5 bg-red-600 hover:bg-red-700 text-white font-bold rounded-xl text-xs shadow-md">Register Staff</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal 9: Change Password Modal (Accountant/Boss) -->
+  <div id="changePasswordModal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+    <div class="bg-white rounded-2xl max-w-md w-full shadow-2xl p-6 relative">
+      <h3 class="text-base font-bold text-slate-900 border-b border-slate-100 pb-3 mb-5">Change User Password</h3>
+
+      <form onsubmit="handleChangePasswordSubmit(event)" class="space-y-4">
+        <input type="hidden" id="passTargetUserId">
+        <div>
+          <label class="block text-xs font-semibold text-slate-700 mb-1">Employee Account</label>
+          <span id="passTargetUserLabel" class="block font-bold text-slate-900 bg-slate-50 p-2.5 rounded-lg text-xs">Sarah Attendant</span>
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-slate-600 mb-1.5">New Password</label>
+          <input type="password" id="regNewPassword" required class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm" placeholder="••••••••">
+        </div>
+
+        <div class="flex space-x-3 pt-4 border-t border-slate-50">
+          <button type="button" onclick="toggleModal('changePasswordModal', false)" class="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs">Cancel</button>
+          <button type="submit" class="flex-1 py-2.5 bg-red-600 hover:bg-red-700 text-white font-bold rounded-xl text-xs shadow-md">Update Password</button>
         </div>
       </form>
     </div>

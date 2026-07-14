@@ -8,7 +8,9 @@ const state = {
   currentTab: 'shiftsTab', // Accountant/Boss sub-tabs
   charts: {
     expenses: null
-  }
+  },
+  // Saved preview close payload to submit after confirmation
+  closePayload: null
 };
 
 const API_URL = '';
@@ -64,7 +66,7 @@ function setupUserEnvironment() {
   } else if (state.user.role === 'accountant' || state.user.role === 'boss') {
     showScreen('accountantArea');
 
-    // Hide register user button if not Boss (Only boss/accountant can access staff registry but let's allow both or show/hide)
+    // Hide register user button if not Boss
     const staffBtn = document.getElementById('btn-staffTab');
     staffBtn.classList.remove('hidden');
 
@@ -222,6 +224,8 @@ async function handleOpenShift(e) {
   const opening_float = document.getElementById('openFloatInput').value;
   const diesel_start_meter = document.getElementById('openDieselMeterInput').value;
   const petrol_start_meter = document.getElementById('openPetrolMeterInput').value;
+  const diesel_price = document.getElementById('openDieselPriceInput').value;
+  const petrol_price = document.getElementById('openPetrolPriceInput').value;
 
   try {
     const res = await fetch(`${API_URL}/api/shifts/open`, {
@@ -230,7 +234,7 @@ async function handleOpenShift(e) {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${state.token}`
       },
-      body: JSON.stringify({ opening_float, diesel_start_meter, petrol_start_meter })
+      body: JSON.stringify({ opening_float, diesel_start_meter, petrol_start_meter, diesel_price, petrol_price })
     });
 
     const data = await res.json();
@@ -241,6 +245,8 @@ async function handleOpenShift(e) {
       document.getElementById('openFloatInput').value = '';
       document.getElementById('openDieselMeterInput').value = '';
       document.getElementById('openPetrolMeterInput').value = '';
+      document.getElementById('openDieselPriceInput').value = '';
+      document.getElementById('openPetrolPriceInput').value = '';
       loadActiveShift();
     } else {
       showToast(data.error || 'Failed to open shift.', 'error');
@@ -293,11 +299,17 @@ async function openCreditSaleModal() {
 
     if (res.ok) {
       const customers = await res.json();
+      const activeCustomers = customers.filter(c => c.status === 'active');
       const select = document.getElementById('creditCustomerInput');
-      select.innerHTML = customers.map(c => {
-        const rateLabel = c.custom_diesel_price ? `(Custom Diesel Rate: ₦${c.custom_diesel_price.toLocaleString()}/L)` : '(Standard Price)';
-        return `<option value="${c.id}">${c.name} ${rateLabel}</option>`;
-      }).join('');
+
+      if (activeCustomers.length === 0) {
+        select.innerHTML = `<option value="">No Active Corporate Accounts</option>`;
+      } else {
+        select.innerHTML = activeCustomers.map(c => {
+          const rateLabel = c.custom_diesel_price ? `(Custom Diesel Rate: ₦${c.custom_diesel_price.toLocaleString()}/L)` : '(Standard Price)';
+          return `<option value="${c.id}">${c.name} ${rateLabel}</option>`;
+        }).join('');
+      }
 
       toggleModal('logCreditSaleModal', true);
     }
@@ -312,6 +324,11 @@ async function handleLogCreditSale(e) {
   const customer_id = document.getElementById('creditCustomerInput').value;
   const fuel_type = document.getElementById('creditFuelInput').value;
   const liters = document.getElementById('creditLitersInput').value;
+
+  if (!customer_id) {
+    showToast('Please select a valid active corporate customer account.', 'error');
+    return;
+  }
 
   try {
     const res = await fetch(`${API_URL}/api/shifts/credit-sale`, {
@@ -337,12 +354,113 @@ async function handleLogCreditSale(e) {
   }
 }
 
-// Close shift
-async function handleCloseShift(e) {
+// Trigger shift close preview before actual submission so attendant can review/correct!
+function handleTriggerShiftPreview(e) {
   e.preventDefault();
-  const diesel_end_meter = document.getElementById('closeDieselMeterInput').value;
-  const petrol_end_meter = document.getElementById('closePetrolMeterInput').value;
-  const closing_cash_actual = document.getElementById('closeCashInput').value;
+  const dieselEnd = parseFloat(document.getElementById('closeDieselMeterInput').value);
+  const petrolEnd = parseFloat(document.getElementById('closePetrolMeterInput').value);
+  const cashActual = parseFloat(document.getElementById('closeCashInput').value);
+  const posActual = parseFloat(document.getElementById('closePosInput').value || 0);
+
+  const shift = state.activeShift;
+  const dieselMeter = shift.meters.find(m => m.fuel_type === 'diesel');
+  const petrolMeter = shift.meters.find(m => m.fuel_type === 'petrol');
+
+  if (dieselEnd < dieselMeter.start_meter) {
+    showToast(`Diesel end reading (${dieselEnd}) cannot be less than start (${dieselMeter.start_meter}).`, 'error');
+    return;
+  }
+  if (petrolEnd < petrolMeter.start_meter) {
+    showToast(`Petrol end reading (${petrolEnd}) cannot be less than start (${petrolMeter.start_meter}).`, 'error');
+    return;
+  }
+
+  // Calculate parameters
+  const dieselLiters = dieselEnd - dieselMeter.start_meter;
+  const petrolLiters = petrolEnd - petrolMeter.start_meter;
+  const dieselRevenue = dieselLiters * dieselMeter.unit_price;
+  const petrolRevenue = petrolLiters * petrolMeter.unit_price;
+  const totalRevenue = dieselRevenue + petrolRevenue;
+
+  const totalExpenses = shift.expenses.reduce((sum, e) => sum + e.amount, 0);
+  const totalCreditSales = shift.creditSales.reduce((sum, c) => sum + c.total_amount, 0);
+
+  const expectedCash = totalRevenue - totalCreditSales - totalExpenses - posActual + shift.opening_float;
+  const variance = cashActual - expectedCash;
+
+  // Store close payload for confirmation
+  state.closePayload = {
+    diesel_end_meter: dieselEnd,
+    petrol_end_meter: petrolEnd,
+    closing_cash_actual: cashActual,
+    closing_pos_actual: posActual
+  };
+
+  // Render preview HTML
+  const container = document.getElementById('previewContent');
+  container.innerHTML = `
+    <div class="grid grid-cols-2 gap-4 border-b border-slate-100 pb-3">
+      <div>
+        <span class="block text-[10px] text-slate-400 font-bold">DIESEL SOLD</span>
+        <span class="font-mono font-bold text-slate-800 text-sm">${dieselLiters.toFixed(2)} Liters</span>
+        <p class="text-[10px] text-slate-400 mt-0.5">Revenue: ₦${dieselRevenue.toLocaleString()}</p>
+      </div>
+      <div>
+        <span class="block text-[10px] text-slate-400 font-bold">PETROL SOLD</span>
+        <span class="font-mono font-bold text-slate-800 text-sm">${petrolLiters.toFixed(2)} Liters</span>
+        <p class="text-[10px] text-slate-400 mt-0.5">Revenue: ₦${petrolRevenue.toLocaleString()}</p>
+      </div>
+    </div>
+
+    <div class="space-y-2 border border-slate-100 rounded-xl p-3 bg-slate-50/50">
+      <div class="flex justify-between">
+        <span>Opening Float (+)</span>
+        <span class="font-bold text-slate-800">₦${shift.opening_float.toLocaleString()}</span>
+      </div>
+      <div class="flex justify-between">
+        <span>Total Nozzle Fuel Revenue (+)</span>
+        <span class="font-bold text-slate-800">₦${totalRevenue.toLocaleString()}</span>
+      </div>
+      <div class="flex justify-between">
+        <span>Logged Shift Expenses (-)</span>
+        <span class="font-bold text-red-600">-₦${totalExpenses.toLocaleString()}</span>
+      </div>
+      <div class="flex justify-between">
+        <span>Logged Corporate Credit Sales (-)</span>
+        <span class="font-bold text-emerald-700">-₦${totalCreditSales.toLocaleString()}</span>
+      </div>
+      <div class="flex justify-between">
+        <span>Actual Card/POS Terminal Sales (-)</span>
+        <span class="font-bold text-blue-600">-₦${posActual.toLocaleString()}</span>
+      </div>
+      <div class="flex justify-between border-t border-slate-200 pt-2 font-bold text-slate-900">
+        <span>Expected Cash in Drawer</span>
+        <span>₦${expectedCash.toLocaleString()}</span>
+      </div>
+    </div>
+
+    <div class="p-3 border rounded-xl flex items-center justify-between ${variance < 0 ? 'bg-red-50 border-red-100 text-red-800' : variance > 0 ? 'bg-emerald-50 border-emerald-100 text-emerald-800' : 'bg-slate-100 border-slate-200 text-slate-800'}">
+      <div>
+        <span class="block text-[9px] uppercase font-bold opacity-60">Physical Cash Drawer Counted</span>
+        <span class="text-sm font-extrabold">₦${cashActual.toLocaleString()}</span>
+      </div>
+      <div class="text-right">
+        <span class="block text-[9px] uppercase font-bold opacity-60">Variance</span>
+        <span class="text-sm font-extrabold">
+          ${variance === 0 ? '₦0.00 (Balanced)' : (variance < 0 ? `-₦${Math.abs(variance).toLocaleString()} (Shortage)` : `+₦${variance.toLocaleString()} (Surplus)`)}
+        </span>
+      </div>
+    </div>
+  `;
+
+  // Toggle modals
+  toggleModal('closeShiftModal', false);
+  toggleModal('closeShiftPreviewModal', true);
+}
+
+// Confirm final shift submission
+async function handleConfirmShiftClose() {
+  if (!state.closePayload) return;
 
   try {
     const res = await fetch(`${API_URL}/api/shifts/close`, {
@@ -351,16 +469,21 @@ async function handleCloseShift(e) {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${state.token}`
       },
-      body: JSON.stringify({ diesel_end_meter, petrol_end_meter, closing_cash_actual })
+      body: JSON.stringify(state.closePayload)
     });
 
     const data = await res.json();
     if (res.ok) {
       showToast('Shift submitted successfully!', 'success');
-      toggleModal('closeShiftModal', false);
+      toggleModal('closeShiftPreviewModal', false);
+
+      // Reset inputs
       document.getElementById('closeDieselMeterInput').value = '';
       document.getElementById('closePetrolMeterInput').value = '';
       document.getElementById('closeCashInput').value = '';
+      document.getElementById('closePosInput').value = '';
+      state.closePayload = null;
+
       loadActiveShift();
     } else {
       showToast(data.error || 'Failed to close shift.', 'error');
@@ -368,6 +491,11 @@ async function handleCloseShift(e) {
   } catch (err) {
     console.error('Error closing shift:', err);
   }
+}
+
+// Stub function left for backward compat
+function handleCloseShift(e) {
+  e.preventDefault();
 }
 
 // ==========================================
@@ -400,6 +528,8 @@ function switchAccountantTab(tabId) {
     loadCorporateCustomers();
   } else if (tabId === 'tanksTab') {
     loadTankReports();
+  } else if (tabId === 'staffTab') {
+    loadStaffDirectory();
   }
 }
 
@@ -548,6 +678,10 @@ async function openReconcileReviewModal(shiftId) {
             <div class="flex justify-between">
               <span>Shift Credit/On-Account Sales (-)</span>
               <span class="font-semibold text-emerald-700">-₦${calc.totalCreditSales.toLocaleString()}</span>
+            </div>
+            <div class="flex justify-between">
+              <span>POS Card Transactions (-)</span>
+              <span class="font-semibold text-blue-600">-₦${s.closing_pos_actual.toLocaleString()}</span>
             </div>
             <div class="flex justify-between border-t border-slate-100 pt-2 font-bold text-slate-900">
               <span>Calculated Cash Expected in Drawer</span>
@@ -788,10 +922,15 @@ async function loadCorporateCustomers() {
       list.innerHTML = state.customers.map(c => {
         const activeClass = state.selectedCustomerId === c.id ? 'bg-red-50/50 border-red-200' : 'bg-slate-50/50 hover:bg-slate-50 border-slate-100';
         const customPriceLabel = c.custom_diesel_price ? `₦${c.custom_diesel_price.toLocaleString()}/L` : 'Standard';
+
+        // Active status badge
+        const statLabel = c.status === 'active' ? 'Active' : 'Inactive';
+        const statColor = c.status === 'active' ? 'text-emerald-700 bg-emerald-50' : 'text-slate-500 bg-slate-100';
+
         return `
           <div onclick="selectCustomer(${c.id})" class="p-4 border rounded-xl cursor-pointer transition text-xs ${activeClass}">
-            <div class="flex justify-between font-bold text-slate-900 mb-1">
-              <span>${c.name}</span>
+            <div class="flex justify-between font-bold text-slate-900 mb-1.5">
+              <span class="flex items-center gap-1.5">${c.name} <span class="text-[9px] px-1 py-0.5 rounded font-bold ${statColor}">${statLabel}</span></span>
               <span class="text-red-600">₦${c.balance.toLocaleString()}</span>
             </div>
             <div class="flex justify-between text-slate-400 text-[10px]">
@@ -847,6 +986,82 @@ async function handleCreateCustomer(e) {
   }
 }
 
+// Open customer edit modal
+function openEditCustomerModal() {
+  const customer = state.customers.find(c => c.id === state.selectedCustomerId);
+  if (!customer) return;
+
+  document.getElementById('editCustId').value = customer.id;
+  document.getElementById('editCustNameInput').value = customer.name;
+  document.getElementById('editCustCustomDieselInput').value = customer.custom_diesel_price !== null ? customer.custom_diesel_price : '';
+  document.getElementById('editCustLimitInput').value = customer.credit_limit;
+  document.getElementById('editCustStatusInput').value = customer.status;
+
+  toggleModal('editCustomerModal', true);
+}
+
+// Submit corporate customer updates
+async function handleEditCustomerSubmit(e) {
+  e.preventDefault();
+  const id = document.getElementById('editCustId').value;
+  const name = document.getElementById('editCustNameInput').value.trim();
+  const custom_diesel_price = document.getElementById('editCustCustomDieselInput').value;
+  const credit_limit = document.getElementById('editCustLimitInput').value;
+  const status = document.getElementById('editCustStatusInput').value;
+
+  try {
+    const res = await fetch(`${API_URL}/api/customers/${id}`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${state.token}`
+      },
+      body: JSON.stringify({ name, custom_diesel_price, credit_limit, status })
+    });
+
+    const data = await res.json();
+    if (res.ok) {
+      showToast('Corporate profile updated successfully!', 'success');
+      toggleModal('editCustomerModal', false);
+      loadCorporateCustomers();
+      loadCustomerLedger(state.selectedCustomerId);
+    } else {
+      showToast(data.error || 'Failed to update corporate profile.', 'error');
+    }
+  } catch (err) {
+    console.error('Error updating customer:', err);
+  }
+}
+
+// Delete corporate customer account
+async function handleDeleteCustomer() {
+  const customer = state.customers.find(c => c.id === state.selectedCustomerId);
+  if (!customer) return;
+
+  const confirmation = confirm(`Are you absolutely sure you want to completely delete corporate customer "${customer.name}"? This action is permanent!`);
+  if (!confirmation) return;
+
+  try {
+    const res = await fetch(`${API_URL}/api/customers/${customer.id}`, {
+      method: 'DELETE',
+      headers: { 'Authorization': `Bearer ${state.token}` }
+    });
+
+    const data = await res.json();
+    if (res.ok) {
+      showToast('Corporate customer deleted successfully.', 'success');
+      state.selectedCustomerId = null;
+      document.getElementById('ledgerDetailState').classList.add('hidden');
+      document.getElementById('ledgerEmptyState').classList.remove('hidden');
+      loadCorporateCustomers();
+    } else {
+      showToast(data.error || 'Failed to delete customer.', 'error');
+    }
+  } catch (err) {
+    console.error('Error deleting customer:', err);
+  }
+}
+
 // Load statement ledger lines
 async function loadCustomerLedger(customerId) {
   try {
@@ -861,6 +1076,15 @@ async function loadCustomerLedger(customerId) {
       document.getElementById('ledgerDetailState').classList.remove('hidden');
 
       document.getElementById('ledgerCustomerName').innerText = customer.name;
+
+      const statusBadge = document.getElementById('ledgerCustomerStatusBadge');
+      statusBadge.innerText = customer.status;
+      if (customer.status === 'active') {
+        statusBadge.className = 'text-[9px] uppercase px-1.5 py-0.5 rounded font-bold bg-emerald-100 text-emerald-800';
+      } else {
+        statusBadge.className = 'text-[9px] uppercase px-1.5 py-0.5 rounded font-bold bg-slate-200 text-slate-600';
+      }
+
       const rateLabel = customer.custom_diesel_price ? `Custom Diesel Rate: ₦${customer.custom_diesel_price.toLocaleString()}/L` : 'Diesel: Standard Rate';
       document.getElementById('ledgerCustomerPrice').innerText = rateLabel;
       document.getElementById('ledgerCustomerLimit').innerText = `Credit Limit: ₦${customer.credit_limit.toLocaleString()}`;
@@ -1040,7 +1264,55 @@ async function handleRecordDips(e) {
   }
 }
 
-// 5. Register New User directly from Staff Tab
+// 5. Load Staff directory
+async function loadStaffDirectory() {
+  try {
+    const res = await fetch(`${API_URL}/api/auth/users`, {
+      headers: { 'Authorization': `Bearer ${state.token}` }
+    });
+
+    if (res.ok) {
+      const users = await res.json();
+      const tbody = document.getElementById('staffDirectoryBody');
+
+      tbody.innerHTML = users.map(u => {
+        let actionButtons = '';
+
+        // Prevent deletion of own user
+        if (state.user.id !== u.id) {
+          actionButtons = `
+            <button onclick="openChangePasswordModal(${u.id}, '${u.full_name}')" class="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded font-bold transition mr-2"><i class="fa-solid fa-key"></i> Pass</button>
+            <button onclick="handleDeleteUser(${u.id}, '${u.full_name}')" class="px-2.5 py-1 bg-red-50 hover:bg-red-100 text-red-600 rounded font-bold transition"><i class="fa-solid fa-user-minus"></i> Remove</button>
+          `;
+        } else {
+          actionButtons = `<span class="text-slate-400 text-[10px] italic font-semibold">Active Account</span>`;
+        }
+
+        let roleBadge = '';
+        if (u.role === 'boss') {
+          roleBadge = `<span class="px-2 py-0.5 rounded bg-yellow-100 text-yellow-800 text-[10px] font-bold">Boss</span>`;
+        } else if (u.role === 'accountant') {
+          roleBadge = `<span class="px-2 py-0.5 rounded bg-slate-100 text-slate-800 text-[10px] font-bold">Accountant</span>`;
+        } else {
+          roleBadge = `<span class="px-2 py-0.5 rounded bg-red-50 text-red-700 text-[10px] font-bold">Attendant</span>`;
+        }
+
+        return `
+          <tr class="hover:bg-slate-50/50 transition">
+            <td class="px-6 py-3 font-bold text-slate-900">${u.full_name}</td>
+            <td class="px-6 py-3 text-slate-600 font-mono">${u.username}</td>
+            <td class="px-6 py-3">${roleBadge}</td>
+            <td class="px-6 py-3 text-right">${actionButtons}</td>
+          </tr>
+        `;
+      }).join('');
+    }
+  } catch (err) {
+    console.error('Error fetching staff directory:', err);
+  }
+}
+
+// Create new user account directly from Staff tab
 async function handleRegisterUser(e) {
   e.preventDefault();
   const username = document.getElementById('regUsername').value.trim();
@@ -1067,11 +1339,71 @@ async function handleRegisterUser(e) {
       document.getElementById('regUsername').value = '';
       document.getElementById('regPassword').value = '';
       document.getElementById('regFullName').value = '';
+      loadStaffDirectory();
     } else {
       showToast(data.error || 'Failed to register staff account.', 'error');
     }
   } catch (err) {
     console.error('Error registering user:', err);
+  }
+}
+
+// Open change password modal
+function openChangePasswordModal(userId, fullName) {
+  document.getElementById('passTargetUserId').value = userId;
+  document.getElementById('passTargetUserLabel').innerText = fullName;
+  document.getElementById('regNewPassword').value = '';
+  toggleModal('changePasswordModal', true);
+}
+
+// Submit password reset
+async function handleChangePasswordSubmit(e) {
+  e.preventDefault();
+  const targetId = document.getElementById('passTargetUserId').value;
+  const password = document.getElementById('regNewPassword').value;
+
+  try {
+    const res = await fetch(`${API_URL}/api/auth/users/${targetId}/password`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${state.token}`
+      },
+      body: JSON.stringify({ password })
+    });
+
+    const data = await res.json();
+    if (res.ok) {
+      showToast('Staff password changed successfully!', 'success');
+      toggleModal('changePasswordModal', false);
+    } else {
+      showToast(data.error || 'Failed to update password.', 'error');
+    }
+  } catch (err) {
+    console.error('Error updating password:', err);
+  }
+}
+
+// Delete user account
+async function handleDeleteUser(userId, fullName) {
+  const confirmation = confirm(`Are you absolutely sure you want to delete staff account "${fullName}"? This user will lose server access instantly!`);
+  if (!confirmation) return;
+
+  try {
+    const res = await fetch(`${API_URL}/api/auth/users/${userId}`, {
+      method: 'DELETE',
+      headers: { 'Authorization': `Bearer ${state.token}` }
+    });
+
+    const data = await res.json();
+    if (res.ok) {
+      showToast('Staff account deleted successfully.', 'success');
+      loadStaffDirectory();
+    } else {
+      showToast(data.error || 'Failed to delete staff account.', 'error');
+    }
+  } catch (err) {
+    console.error('Error deleting user account:', err);
   }
 }
 
