@@ -3,7 +3,7 @@ const router = express.Router();
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const db = require('../db');
-const { JWT_SECRET, requireAuth } = require('../middleware');
+const { JWT_SECRET, requireAuth, requireAnyRole } = require('../middleware');
 
 // POST /api/auth/login
 router.post('/login', (req, res) => {
@@ -49,6 +49,48 @@ router.post('/login', (req, res) => {
 // GET /api/auth/me - Verify current token and return user details
 router.get('/me', requireAuth, (req, res) => {
   res.json({ user: req.user });
+});
+
+// POST /api/auth/register - Register a new user (Accountant & Boss only)
+router.post('/register', requireAuth, requireAnyRole(['accountant', 'boss']), (req, res) => {
+  const { username, password, role, full_name } = req.body;
+
+  if (!username || !password || !role || !full_name) {
+    return res.status(400).json({ error: 'Username, password, role, and full name are required.' });
+  }
+
+  if (role !== 'attendant' && role !== 'accountant' && role !== 'boss') {
+    return res.status(400).json({ error: 'Invalid role. Must be attendant, accountant, or boss.' });
+  }
+
+  try {
+    // Check duplicate username
+    const existing = db.prepare('SELECT id FROM users WHERE username = ?').get(username);
+    if (existing) {
+      return res.status(400).json({ error: 'Username is already taken.' });
+    }
+
+    const salt = bcrypt.genSaltSync(10);
+    const hashedPassword = bcrypt.hashSync(password, salt);
+
+    const result = db.prepare(`
+      INSERT INTO users (username, password, role, full_name)
+      VALUES (?, ?, ?, ?)
+    `).run(username, hashedPassword, role, full_name);
+
+    res.status(201).json({
+      message: 'User registered successfully.',
+      userId: result.lastInsertRowid,
+      user: {
+        username,
+        role,
+        fullName: full_name
+      }
+    });
+  } catch (err) {
+    console.error('Registration error:', err);
+    res.status(500).json({ error: 'Failed to create user account.' });
+  }
 });
 
 module.exports = router;

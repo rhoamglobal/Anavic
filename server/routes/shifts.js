@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const db = require('../db');
-const { requireAuth, requireRole } = require('../middleware');
+const { requireAuth, requireRole, requireAnyRole } = require('../middleware');
 
 // Helper to get active shift for an attendant
 function getActiveShift(attendantId) {
@@ -69,8 +69,8 @@ router.post('/open', requireAuth, requireRole('attendant'), (req, res) => {
 
     // Get current fuel prices
     const prices = db.prepare('SELECT * FROM fuel_prices').all();
-    const dieselPrice = prices.find(p => p.fuel_type === 'diesel')?.price_per_liter || 1.65;
-    const petrolPrice = prices.find(p => p.fuel_type === 'petrol')?.price_per_liter || 1.80;
+    const dieselPrice = prices.find(p => p.fuel_type === 'diesel')?.price_per_liter || 1100.0;
+    const petrolPrice = prices.find(p => p.fuel_type === 'petrol')?.price_per_liter || 950.0;
 
     // Use transaction to create shift and insert meters
     const openShiftTx = db.transaction(() => {
@@ -182,8 +182,8 @@ router.post('/credit-sale', requireAuth, requireRole('attendant'), (req, res) =>
     // Check Credit Limit
     if (customer.balance + totalAmount > customer.credit_limit) {
       return res.status(400).json({
-        error: `Credit limit exceeded. Current Balance: $${customer.balance.toFixed(2)}, ` +
-               `Limit: $${customer.credit_limit.toFixed(2)}. Adding $${totalAmount.toFixed(2)} exceeds limit.`
+        error: `Credit limit exceeded. Current Balance: ₦${customer.balance.toFixed(2)}, ` +
+               `Limit: ₦${customer.credit_limit.toFixed(2)}. Adding ₦${totalAmount.toFixed(2)} exceeds limit.`
       });
     }
 
@@ -310,11 +310,11 @@ router.post('/close', requireAuth, requireRole('attendant'), (req, res) => {
 });
 
 // ==========================================
-// ACCOUNTANT ENDPOINTS
+// ACCOUNTANT & BOSS ENDPOINTS
 // ==========================================
 
-// GET /api/shifts - Fetch all shifts with filter options (Accountant only)
-router.get('/', requireAuth, requireRole('accountant'), (req, res) => {
+// GET /api/shifts - Fetch all shifts with filter options (Accountant & Boss only)
+router.get('/', requireAuth, requireAnyRole(['accountant', 'boss']), (req, res) => {
   const { status } = req.query;
   try {
     let query = `
@@ -388,8 +388,8 @@ router.get('/', requireAuth, requireRole('accountant'), (req, res) => {
   }
 });
 
-// POST /api/shifts/:id/approve - Reconcile/Approve a closed shift (Accountant only)
-router.post('/:id/approve', requireAuth, requireRole('accountant'), (req, res) => {
+// POST /api/shifts/:id/approve - Reconcile/Approve a closed shift (Accountant & Boss only)
+router.post('/:id/approve', requireAuth, requireAnyRole(['accountant', 'boss']), (req, res) => {
   const shiftId = parseInt(req.params.id);
   const { notes } = req.body;
 
@@ -420,8 +420,8 @@ router.post('/:id/approve', requireAuth, requireRole('accountant'), (req, res) =
   }
 });
 
-// GET /api/shifts/analytics - Financial summary of approved and closed shifts (Accountant only)
-router.get('/analytics', requireAuth, requireRole('accountant'), (req, res) => {
+// GET /api/shifts/analytics - Financial summary of approved and closed shifts (Accountant & Boss only)
+router.get('/analytics', requireAuth, requireAnyRole(['accountant', 'boss']), (req, res) => {
   try {
     const closedApprovedShifts = db.prepare(`
       SELECT s.* FROM shifts s WHERE s.status IN ('closed', 'approved')

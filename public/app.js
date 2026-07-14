@@ -5,7 +5,7 @@ const state = {
   activeShift: null,
   customers: [],
   selectedCustomerId: null,
-  currentTab: 'shiftsTab', // Accountant sub-tabs
+  currentTab: 'shiftsTab', // Accountant/Boss sub-tabs
   charts: {
     expenses: null
   }
@@ -48,11 +48,26 @@ function setupUserEnvironment() {
   document.getElementById('userFullName').innerText = state.user.fullName;
   document.getElementById('userRoleBadge').innerText = state.user.role;
 
+  // Set role color scheme
+  const roleBadge = document.getElementById('userRoleBadge');
+  if (state.user.role === 'boss') {
+    roleBadge.className = 'inline-block px-2 py-0.5 rounded text-[9px] uppercase font-bold tracking-wider bg-yellow-500 text-slate-900';
+  } else if (state.user.role === 'accountant') {
+    roleBadge.className = 'inline-block px-2 py-0.5 rounded text-[9px] uppercase font-bold tracking-wider bg-slate-700 text-white';
+  } else {
+    roleBadge.className = 'inline-block px-2 py-0.5 rounded text-[9px] uppercase font-bold tracking-wider bg-red-600 text-white';
+  }
+
   if (state.user.role === 'attendant') {
     showScreen('attendantArea');
     loadActiveShift();
-  } else if (state.user.role === 'accountant') {
+  } else if (state.user.role === 'accountant' || state.user.role === 'boss') {
     showScreen('accountantArea');
+
+    // Hide register user button if not Boss (Only boss/accountant can access staff registry but let's allow both or show/hide)
+    const staffBtn = document.getElementById('btn-staffTab');
+    staffBtn.classList.remove('hidden');
+
     switchAccountantTab('shiftsTab');
   }
 }
@@ -143,7 +158,7 @@ function renderActiveShift() {
 
   const shift = state.activeShift;
   document.getElementById('shiftIDVal').innerText = `#${shift.id}`;
-  document.getElementById('shiftFloatVal').innerText = `$${shift.opening_float.toFixed(2)}`;
+  document.getElementById('shiftFloatVal').innerText = `₦${shift.opening_float.toLocaleString()}`;
 
   const openedDate = new Date(shift.opened_at);
   document.getElementById('shiftOpenedTime').innerText = openedDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) + ' ' + openedDate.toLocaleDateString();
@@ -155,8 +170,8 @@ function renderActiveShift() {
   document.getElementById('dieselStartMeterBadge').innerText = dieselMeter.start_meter.toFixed(2);
   document.getElementById('petrolStartMeterBadge').innerText = petrolMeter.start_meter.toFixed(2);
 
-  document.getElementById('dieselPriceBadge').innerText = `$${dieselMeter.unit_price.toFixed(2)}/L`;
-  document.getElementById('petrolPriceBadge').innerText = `$${petrolMeter.unit_price.toFixed(2)}/L`;
+  document.getElementById('dieselPriceBadge').innerText = `₦${dieselMeter.unit_price.toLocaleString()}/L`;
+  document.getElementById('petrolPriceBadge').innerText = `₦${petrolMeter.unit_price.toLocaleString()}/L`;
 
   // Expenses summary list
   const expensesList = document.getElementById('shiftExpensesList');
@@ -172,12 +187,12 @@ function renderActiveShift() {
             <span class="font-bold text-slate-800">${e.category}</span>
             <p class="text-[10px] text-slate-400 mt-0.5">${e.description}</p>
           </div>
-          <span class="font-bold text-red-600">-$${e.amount.toFixed(2)}</span>
+          <span class="font-bold text-red-600">-₦${e.amount.toLocaleString()}</span>
         </div>
       `;
     }).join('');
   }
-  document.getElementById('shiftExpenseTally').innerText = `Expenses: $${totalExpenses.toFixed(2)}`;
+  document.getElementById('shiftExpenseTally').innerText = `Expenses: ₦${totalExpenses.toLocaleString()}`;
 
   // Credit sales summary list
   const creditList = document.getElementById('shiftCreditSalesList');
@@ -191,14 +206,14 @@ function renderActiveShift() {
         <div class="flex items-center justify-between p-2 bg-emerald-50/50 border border-emerald-100 rounded-lg text-xs">
           <div>
             <span class="font-bold text-slate-800">${c.customer_name}</span>
-            <p class="text-[10px] text-slate-400 mt-0.5">${c.liters.toFixed(2)}L ${c.fuel_type} @ $${c.price_per_liter.toFixed(2)}</p>
+            <p class="text-[10px] text-slate-400 mt-0.5">${c.liters.toFixed(2)}L ${c.fuel_type} @ ₦${c.price_per_liter.toLocaleString()}</p>
           </div>
-          <span class="font-bold text-emerald-700">+$${c.total_amount.toFixed(2)}</span>
+          <span class="font-bold text-emerald-700">+₦${c.total_amount.toLocaleString()}</span>
         </div>
       `;
     }).join('');
   }
-  document.getElementById('shiftCreditTally').innerText = `Credits: $${totalCredit.toFixed(2)}`;
+  document.getElementById('shiftCreditTally').innerText = `Credits: ₦${totalCredit.toLocaleString()}`;
 }
 
 // Handle opening shift
@@ -280,7 +295,7 @@ async function openCreditSaleModal() {
       const customers = await res.json();
       const select = document.getElementById('creditCustomerInput');
       select.innerHTML = customers.map(c => {
-        const rateLabel = c.custom_diesel_price ? `(Custom Diesel Rate: $${c.custom_diesel_price.toFixed(2)}/L)` : '(Standard Price)';
+        const rateLabel = c.custom_diesel_price ? `(Custom Diesel Rate: ₦${c.custom_diesel_price.toLocaleString()}/L)` : '(Standard Price)';
         return `<option value="${c.id}">${c.name} ${rateLabel}</option>`;
       }).join('');
 
@@ -356,18 +371,18 @@ async function handleCloseShift(e) {
 }
 
 // ==========================================
-// ACCOUNTANT DASHBOARD PORTAL
+// ACCOUNTANT / BOSS DASHBOARD PORTAL
 // ==========================================
 
 function switchAccountantTab(tabId) {
   state.currentTab = tabId;
 
   // Highlight active tab button
-  ['shiftsTab', 'analyticsTab', 'creditTab', 'tanksTab'].forEach(id => {
+  ['shiftsTab', 'analyticsTab', 'creditTab', 'tanksTab', 'staffTab'].forEach(id => {
     const btn = document.getElementById(`btn-${id}`);
     const section = document.getElementById(id);
     if (id === tabId) {
-      btn.className = 'py-3 px-6 text-sm font-semibold border-b-2 border-indigo-600 text-indigo-600 focus:outline-none transition';
+      btn.className = 'py-3 px-6 text-sm font-semibold border-b-2 border-red-600 text-red-600 focus:outline-none transition';
       section.classList.remove('hidden');
     } else {
       btn.className = 'py-3 px-6 text-sm font-semibold border-b-2 border-transparent text-slate-500 hover:text-slate-800 hover:border-slate-300 focus:outline-none transition';
@@ -412,20 +427,20 @@ async function loadShiftsList() {
         const closedDate = s.closed_at ? (new Date(s.closed_at).toLocaleDateString() + ' ' + new Date(s.closed_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })) : '---';
 
         const calc = s.calculations;
-        const revVal = calc.totalRevenue.toFixed(2);
-        const dedVal = (calc.totalExpenses + calc.totalCreditSales).toFixed(2);
-        const expCash = calc.expectedCash.toFixed(2);
-        const actCash = s.status === 'open' ? '---' : `$${s.closing_cash_actual.toFixed(2)}`;
+        const revVal = calc.totalRevenue.toLocaleString();
+        const dedVal = (calc.totalExpenses + calc.totalCreditSales).toLocaleString();
+        const expCash = calc.expectedCash.toLocaleString();
+        const actCash = s.status === 'open' ? '---' : `₦${s.closing_cash_actual.toLocaleString()}`;
 
         // Variance coloring
         let varBadge = '---';
         if (s.status !== 'open') {
           if (calc.variance < 0) {
-            varBadge = `<span class="px-2.5 py-1 bg-red-50 text-red-600 font-bold rounded">-$${Math.abs(calc.variance).toFixed(2)} (Short)</span>`;
+            varBadge = `<span class="px-2.5 py-1 bg-red-50 text-red-600 font-bold rounded">-₦${Math.abs(calc.variance).toLocaleString()} (Short)</span>`;
           } else if (calc.variance > 0) {
-            varBadge = `<span class="px-2.5 py-1 bg-emerald-50 text-emerald-700 font-bold rounded">+$${calc.variance.toFixed(2)} (Surplus)</span>`;
+            varBadge = `<span class="px-2.5 py-1 bg-emerald-50 text-emerald-700 font-bold rounded">+₦${calc.variance.toLocaleString()} (Surplus)</span>`;
           } else {
-            varBadge = `<span class="px-2.5 py-1 bg-slate-100 text-slate-600 font-bold rounded">$0.00 (Balanced)</span>`;
+            varBadge = `<span class="px-2.5 py-1 bg-slate-100 text-slate-600 font-bold rounded">₦0.00 (Balanced)</span>`;
           }
         }
 
@@ -441,7 +456,7 @@ async function loadShiftsList() {
 
         let actionBtn = '---';
         if (s.status === 'closed') {
-          actionBtn = `<button onclick="openReconcileReviewModal(${s.id})" class="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded text-[11px] transition">Review & Approve</button>`;
+          actionBtn = `<button onclick="openReconcileReviewModal(${s.id})" class="px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white font-semibold rounded text-[11px] transition">Review & Approve</button>`;
         } else if (s.status === 'approved') {
           actionBtn = `<button onclick="openReconcileReviewModal(${s.id})" class="px-3 py-1.5 bg-slate-100 text-slate-500 font-semibold rounded text-[11px]">View Audit Details</button>`;
         }
@@ -454,9 +469,9 @@ async function loadShiftsList() {
               <span class="block">O: ${openedDate}</span>
               <span class="block text-[10px]">C: ${closedDate}</span>
             </td>
-            <td class="px-6 py-4 text-right font-bold text-slate-900">$${revVal}</td>
-            <td class="px-6 py-4 text-right text-slate-500">-$${dedVal}</td>
-            <td class="px-6 py-4 text-right font-semibold text-slate-700">$${expCash}</td>
+            <td class="px-6 py-4 text-right font-bold text-slate-900">₦${revVal}</td>
+            <td class="px-6 py-4 text-right text-slate-500">-₦${dedVal}</td>
+            <td class="px-6 py-4 text-right font-semibold text-slate-700">₦${expCash}</td>
             <td class="px-6 py-4 text-right font-semibold text-slate-700">${actCash}</td>
             <td class="px-6 py-4 text-center">${varBadge}</td>
             <td class="px-6 py-4 text-center">${statBadge}</td>
@@ -503,19 +518,19 @@ async function openReconcileReviewModal(shiftId) {
           <h4 class="font-bold text-slate-900">1. Fuel Sales Breakdown</h4>
           <div class="grid grid-cols-2 gap-4">
             <div class="bg-orange-50/40 border border-orange-100 p-3 rounded-xl">
-              <span class="text-[10px] text-orange-800 font-bold">DIESEL (Nozzle 1)</span>
+              <span class="text-[10px] text-orange-800 font-bold">DIESEL</span>
               <span class="block font-mono font-bold mt-1 text-slate-800">${calc.dieselLiters.toFixed(2)} Liters</span>
-              <span class="text-[10px] text-slate-400">Revenue: $${calc.dieselRevenue.toFixed(2)}</span>
+              <span class="text-[10px] text-slate-400">Revenue: ₦${calc.dieselRevenue.toLocaleString()}</span>
             </div>
-            <div class="bg-teal-50/40 border border-teal-100 p-3 rounded-xl">
-              <span class="text-[10px] text-teal-800 font-bold">PETROL (Nozzle 2)</span>
+            <div class="bg-red-50/40 border border-red-100 p-3 rounded-xl">
+              <span class="text-[10px] text-red-800 font-bold">PETROL</span>
               <span class="block font-mono font-bold mt-1 text-slate-800">${calc.petrolLiters.toFixed(2)} Liters</span>
-              <span class="text-[10px] text-slate-400">Revenue: $${calc.petrolRevenue.toFixed(2)}</span>
+              <span class="text-[10px] text-slate-400">Revenue: ₦${calc.petrolRevenue.toLocaleString()}</span>
             </div>
           </div>
           <div class="flex justify-between items-center bg-slate-50 p-3 rounded-xl font-bold">
             <span>Total Calculated Fuel Revenue</span>
-            <span class="text-slate-900">$${calc.totalRevenue.toFixed(2)}</span>
+            <span class="text-slate-900">₦${calc.totalRevenue.toLocaleString()}</span>
           </div>
         </div>
 
@@ -524,19 +539,19 @@ async function openReconcileReviewModal(shiftId) {
           <div class="space-y-2 border border-slate-100 rounded-xl p-3 text-slate-600">
             <div class="flex justify-between">
               <span>Opening Cash Float (+)</span>
-              <span class="font-semibold text-slate-800">$${s.opening_float.toFixed(2)}</span>
+              <span class="font-semibold text-slate-800">₦${s.opening_float.toLocaleString()}</span>
             </div>
             <div class="flex justify-between">
               <span>Shift Petty Expenses (-)</span>
-              <span class="font-semibold text-red-600">-$${calc.totalExpenses.toFixed(2)}</span>
+              <span class="font-semibold text-red-600">-₦${calc.totalExpenses.toLocaleString()}</span>
             </div>
             <div class="flex justify-between">
               <span>Shift Credit/On-Account Sales (-)</span>
-              <span class="font-semibold text-emerald-700">-$${calc.totalCreditSales.toFixed(2)}</span>
+              <span class="font-semibold text-emerald-700">-₦${calc.totalCreditSales.toLocaleString()}</span>
             </div>
             <div class="flex justify-between border-t border-slate-100 pt-2 font-bold text-slate-900">
               <span>Calculated Cash Expected in Drawer</span>
-              <span>$${calc.expectedCash.toFixed(2)}</span>
+              <span>₦${calc.expectedCash.toLocaleString()}</span>
             </div>
           </div>
         </div>
@@ -546,16 +561,16 @@ async function openReconcileReviewModal(shiftId) {
           <div class="flex items-center justify-between p-4 bg-slate-50 rounded-xl">
             <div>
               <span class="block text-[10px] text-slate-400 uppercase font-semibold">Attendant Counted Physical Cash</span>
-              <span class="text-base font-bold text-slate-900">$${s.closing_cash_actual.toFixed(2)}</span>
+              <span class="text-base font-bold text-slate-900">₦${s.closing_cash_actual.toLocaleString()}</span>
             </div>
 
             <div class="text-right">
               <span class="block text-[10px] text-slate-400 uppercase font-semibold">Audit Variance</span>
               ${calc.variance < 0
-                ? `<span class="text-base font-bold text-red-600">-$${Math.abs(calc.variance).toFixed(2)} (Shortage)</span>`
+                ? `<span class="text-base font-bold text-red-600">-₦${Math.abs(calc.variance).toLocaleString()} (Shortage)</span>`
                 : calc.variance > 0
-                  ? `<span class="text-base font-bold text-emerald-600">+$${calc.variance.toFixed(2)} (Surplus)</span>`
-                  : `<span class="text-base font-bold text-slate-600">$0.00 (Balanced)</span>`
+                  ? `<span class="text-base font-bold text-emerald-600">+₦${calc.variance.toLocaleString()} (Surplus)</span>`
+                  : `<span class="text-base font-bold text-slate-600">₦0.00 (Balanced)</span>`
               }
             </div>
           </div>
@@ -625,22 +640,22 @@ async function loadAnalytics() {
       const { summary, expenseTally } = await res.json();
 
       document.getElementById('statVolume').innerText = `${(summary.totalDieselLiters + summary.totalPetrolLiters).toFixed(2)} Liters`;
-      document.getElementById('statRevenue').innerText = `$${summary.totalRevenue.toFixed(2)}`;
-      document.getElementById('statExpenses').innerText = `$${summary.totalExpenses.toFixed(2)}`;
+      document.getElementById('statRevenue').innerText = `₦${summary.totalRevenue.toLocaleString()}`;
+      document.getElementById('statExpenses').innerText = `₦${summary.totalExpenses.toLocaleString()}`;
 
       const variance = summary.totalVariance;
       const varStat = document.getElementById('statVariance');
       const varSub = document.getElementById('statVarianceSub');
       if (variance < 0) {
-        varStat.innerText = `-$${Math.abs(variance).toFixed(2)}`;
+        varStat.innerText = `-₦${Math.abs(variance).toLocaleString()}`;
         varStat.className = 'block text-2xl font-bold mt-1 text-red-600';
         varSub.innerText = 'Total net shortage (uncollected cash)';
       } else if (variance > 0) {
-        varStat.innerText = `+$${variance.toFixed(2)}`;
+        varStat.innerText = `+₦${variance.toLocaleString()}`;
         varStat.className = 'block text-2xl font-bold mt-1 text-emerald-600';
         varSub.innerText = 'Total net surplus cash collected';
       } else {
-        varStat.innerText = `$0.00`;
+        varStat.innerText = `₦0.00`;
         varStat.className = 'block text-2xl font-bold mt-1 text-slate-800';
         varSub.innerText = 'Perfect physical cash drawer match!';
       }
@@ -665,7 +680,6 @@ function renderExpenseChart(tally) {
   const amounts = tally.map(t => t.amount);
 
   if (categories.length === 0) {
-    // Empty dataset indicator
     categories.push('No Expenses Logged');
     amounts.push(1);
   }
@@ -677,10 +691,10 @@ function renderExpenseChart(tally) {
       datasets: [{
         data: amounts,
         backgroundColor: [
-          '#6366f1', // Indigo
+          '#dc2626', // Red-600
           '#f59e0b', // Orange
           '#10b981', // Emerald
-          '#ef4444', // Red
+          '#3b82f6', // Blue
           '#8b5cf6'  // Purple
         ],
         borderWidth: 2,
@@ -712,11 +726,11 @@ async function loadCurrentPrices() {
 
     if (res.ok) {
       const prices = await res.json();
-      const diesel = prices.find(p => p.fuel_type === 'diesel')?.price_per_liter || 1.65;
-      const petrol = prices.find(p => p.fuel_type === 'petrol')?.price_per_liter || 1.80;
+      const diesel = prices.find(p => p.fuel_type === 'diesel')?.price_per_liter || 1100.0;
+      const petrol = prices.find(p => p.fuel_type === 'petrol')?.price_per_liter || 950.0;
 
-      document.getElementById('labelCurrentDiesel').innerText = `Current: $${diesel.toFixed(2)} / L`;
-      document.getElementById('labelCurrentPetrol').innerText = `Current: $${petrol.toFixed(2)} / L`;
+      document.getElementById('labelCurrentDiesel').innerText = `Current: ₦${diesel.toLocaleString()} / L`;
+      document.getElementById('labelCurrentPetrol').innerText = `Current: ₦${petrol.toLocaleString()} / L`;
     }
   } catch (err) {
     console.error('Error fetching standard prices:', err);
@@ -745,7 +759,7 @@ async function handlePriceUpdate(fuel_type) {
 
     const data = await res.json();
     if (res.ok) {
-      showToast(`${fuel_type.toUpperCase()} standard price updated to $${data.price_per_liter.toFixed(2)}`, 'success');
+      showToast(`${fuel_type.toUpperCase()} standard price updated to ₦${data.price_per_liter.toLocaleString()}`, 'success');
       document.getElementById(inputId).value = '';
       loadCurrentPrices();
     } else {
@@ -772,17 +786,17 @@ async function loadCorporateCustomers() {
       }
 
       list.innerHTML = state.customers.map(c => {
-        const activeClass = state.selectedCustomerId === c.id ? 'bg-indigo-50 border-indigo-200' : 'bg-slate-50/50 hover:bg-slate-50 border-slate-100';
-        const customPriceLabel = c.custom_diesel_price ? `$${c.custom_diesel_price.toFixed(2)}/L` : 'Standard';
+        const activeClass = state.selectedCustomerId === c.id ? 'bg-red-50/50 border-red-200' : 'bg-slate-50/50 hover:bg-slate-50 border-slate-100';
+        const customPriceLabel = c.custom_diesel_price ? `₦${c.custom_diesel_price.toLocaleString()}/L` : 'Standard';
         return `
           <div onclick="selectCustomer(${c.id})" class="p-4 border rounded-xl cursor-pointer transition text-xs ${activeClass}">
             <div class="flex justify-between font-bold text-slate-900 mb-1">
               <span>${c.name}</span>
-              <span class="text-red-600">$${c.balance.toFixed(2)}</span>
+              <span class="text-red-600">₦${c.balance.toLocaleString()}</span>
             </div>
             <div class="flex justify-between text-slate-400 text-[10px]">
               <span>Diesel Price: <strong class="text-slate-600">${customPriceLabel}</strong></span>
-              <span>Limit: <strong>$${c.credit_limit.toFixed(2)}</strong></span>
+              <span>Limit: <strong>₦${c.credit_limit.toLocaleString()}</strong></span>
             </div>
           </div>
         `;
@@ -847,12 +861,12 @@ async function loadCustomerLedger(customerId) {
       document.getElementById('ledgerDetailState').classList.remove('hidden');
 
       document.getElementById('ledgerCustomerName').innerText = customer.name;
-      const rateLabel = customer.custom_diesel_price ? `Custom Diesel Rate: $${customer.custom_diesel_price.toFixed(2)}/L` : 'Diesel: Standard Rate';
+      const rateLabel = customer.custom_diesel_price ? `Custom Diesel Rate: ₦${customer.custom_diesel_price.toLocaleString()}/L` : 'Diesel: Standard Rate';
       document.getElementById('ledgerCustomerPrice').innerText = rateLabel;
-      document.getElementById('ledgerCustomerLimit').innerText = `Credit Limit: $${customer.credit_limit.toFixed(2)}`;
+      document.getElementById('ledgerCustomerLimit').innerText = `Credit Limit: ₦${customer.credit_limit.toLocaleString()}`;
 
       const balBadge = document.getElementById('ledgerCustomerBalance');
-      balBadge.innerText = `$${customer.balance.toFixed(2)}`;
+      balBadge.innerText = `₦${customer.balance.toLocaleString()}`;
       if (customer.balance > customer.credit_limit * 0.9) {
         balBadge.className = 'text-xl font-bold text-red-600 animate-pulse';
       } else {
@@ -869,11 +883,11 @@ async function loadCustomerLedger(customerId) {
       tbody.innerHTML = ledger.map(line => {
         const dateStr = new Date(line.date).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' });
         const details = line.type === 'purchase'
-          ? `Fuel Taken: ${line.liters.toFixed(2)}L ${line.fuel_type.toUpperCase()} @ $${line.price_per_liter.toFixed(2)}/L`
+          ? `Fuel Taken: ${line.liters.toFixed(2)}L ${line.fuel_type.toUpperCase()} @ ₦${line.price_per_liter.toLocaleString()}/L`
           : `Payment Received (${line.payment_method}) ${line.reference_no ? `- Ref# ${line.reference_no}` : ''} (Rec: ${line.recorded_by_name})`;
 
-        const debit = line.type === 'purchase' ? `+$${line.amount.toFixed(2)}` : '---';
-        const credit = line.type === 'payment' ? `-$${line.amount.toFixed(2)}` : '---';
+        const debit = line.type === 'purchase' ? `+₦${line.amount.toLocaleString()}` : '---';
+        const credit = line.type === 'payment' ? `-₦${line.amount.toLocaleString()}` : '---';
 
         return `
           <tr class="hover:bg-slate-50/50 transition">
@@ -881,7 +895,7 @@ async function loadCustomerLedger(customerId) {
             <td class="px-4 py-3 font-semibold text-slate-800">${details}</td>
             <td class="px-4 py-3 text-right font-bold text-red-600">${debit}</td>
             <td class="px-4 py-3 text-right font-bold text-emerald-700">${credit}</td>
-            <td class="px-4 py-3 text-right font-bold text-slate-900">$${line.runningBalance.toFixed(2)}</td>
+            <td class="px-4 py-3 text-right font-bold text-slate-900">₦${line.runningBalance.toLocaleString()}</td>
           </tr>
         `;
       }).join('');
@@ -914,7 +928,7 @@ async function handleRecordPayment() {
 
     const data = await res.json();
     if (res.ok) {
-      showToast(`Payment of $${parseFloat(amount).toFixed(2)} recorded!`, 'success');
+      showToast(`Payment of ₦${parseFloat(amount).toLocaleString()} recorded!`, 'success');
       document.getElementById('payAmountInput').value = '';
       document.getElementById('payRefInput').value = '';
       loadCorporateCustomers();
@@ -960,11 +974,11 @@ async function loadTankReports() {
             <td class="px-6 py-4 bg-orange-50/20 text-slate-900 font-bold">${l.diesel_end_dip.toFixed(2)}</td>
             <td class="px-6 py-4 font-bold ${dVarianceClass}">${dieselVarLabel}</td>
 
-            <td class="px-6 py-4 bg-teal-50/20 text-slate-700">${l.petrol_start_dip.toFixed(2)}</td>
-            <td class="px-6 py-4 bg-teal-50/20 text-slate-700">${l.petrol_delivery > 0 ? `+${l.petrol_delivery.toFixed(2)}` : '---'}</td>
-            <td class="px-6 py-4 bg-teal-50/20 text-slate-700">-${l.petrol_sold.toFixed(2)}</td>
-            <td class="px-6 py-4 bg-teal-50/20 text-slate-700 font-semibold">${l.petrol_expected.toFixed(2)}</td>
-            <td class="px-6 py-4 bg-teal-50/20 text-slate-900 font-bold">${l.petrol_end_dip.toFixed(2)}</td>
+            <td class="px-6 py-4 bg-red-50/20 text-slate-700">${l.petrol_start_dip.toFixed(2)}</td>
+            <td class="px-6 py-4 bg-red-50/20 text-slate-700">${l.petrol_delivery > 0 ? `+${l.petrol_delivery.toFixed(2)}` : '---'}</td>
+            <td class="px-6 py-4 bg-red-50/20 text-slate-700">-${l.petrol_sold.toFixed(2)}</td>
+            <td class="px-6 py-4 bg-red-50/20 text-slate-700 font-semibold">${l.petrol_expected.toFixed(2)}</td>
+            <td class="px-6 py-4 bg-red-50/20 text-slate-900 font-bold">${l.petrol_end_dip.toFixed(2)}</td>
             <td class="px-6 py-4 font-bold ${pVarianceClass}">${petrolVarLabel}</td>
           </tr>
         `;
@@ -1023,6 +1037,41 @@ async function handleRecordDips(e) {
     }
   } catch (err) {
     console.error('Error logging dip readings:', err);
+  }
+}
+
+// 5. Register New User directly from Staff Tab
+async function handleRegisterUser(e) {
+  e.preventDefault();
+  const username = document.getElementById('regUsername').value.trim();
+  const password = document.getElementById('regPassword').value;
+  const full_name = document.getElementById('regFullName').value.trim();
+  const role = document.getElementById('regRole').value;
+
+  try {
+    const res = await fetch(`${API_URL}/api/auth/register`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${state.token}`
+      },
+      body: JSON.stringify({ username, password, full_name, role })
+    });
+
+    const data = await res.json();
+    if (res.ok) {
+      showToast(`Registered staff account: ${data.user.fullName}!`, 'success');
+      toggleModal('createUserModal', false);
+
+      // Reset fields
+      document.getElementById('regUsername').value = '';
+      document.getElementById('regPassword').value = '';
+      document.getElementById('regFullName').value = '';
+    } else {
+      showToast(data.error || 'Failed to register staff account.', 'error');
+    }
+  } catch (err) {
+    console.error('Error registering user:', err);
   }
 }
 

@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const db = require('../db');
-const { requireAuth, requireRole } = require('../middleware');
+const { requireAuth, requireRole, requireAnyRole } = require('../middleware');
 
 // GET /api/customers - Get all credit customers
 router.get('/', requireAuth, (req, res) => {
@@ -14,8 +14,8 @@ router.get('/', requireAuth, (req, res) => {
   }
 });
 
-// POST /api/customers - Create a new credit customer (Accountant only)
-router.post('/', requireAuth, requireRole('accountant'), (req, res) => {
+// POST /api/customers - Create a new credit customer (Accountant & Boss only)
+router.post('/', requireAuth, requireAnyRole(['accountant', 'boss']), (req, res) => {
   const { name, custom_diesel_price, credit_limit } = req.body;
 
   if (!name) {
@@ -126,8 +126,8 @@ router.get('/:id/ledger', requireAuth, (req, res) => {
   }
 });
 
-// POST /api/customers/:id/payments - Record a payment from a corporate customer (Accountant only)
-router.post('/:id/payments', requireAuth, requireRole('accountant'), (req, res) => {
+// POST /api/customers/:id/payments - Record a payment from a corporate customer (Accountant & Boss only)
+router.post('/:id/payments', requireAuth, requireAnyRole(['accountant', 'boss']), (req, res) => {
   const customerId = parseInt(req.params.id);
   const { amount, payment_method, reference_no } = req.body;
 

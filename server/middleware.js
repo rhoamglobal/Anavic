@@ -30,8 +30,21 @@ function requireRole(role) {
   };
 }
 
+function requireAnyRole(roles) {
+  return (req, res, next) => {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Unauthorized.' });
+    }
+    if (!roles.includes(req.user.role)) {
+      return res.status(403).json({ error: 'Forbidden. Access restricted.' });
+    }
+    next();
+  };
+}
+
 module.exports = {
   JWT_SECRET,
   requireAuth,
-  requireRole
+  requireRole,
+  requireAnyRole
 };

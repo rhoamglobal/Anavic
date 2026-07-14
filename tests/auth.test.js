@@ -57,4 +57,63 @@ describe('Authentication API', () => {
     expect(meRes.statusCode).toBe(200);
     expect(meRes.body.user).toHaveProperty('username', 'attendant');
   });
+
+  it('should allow accountant/boss to register a new user', async () => {
+    const loginRes = await request(app)
+      .post('/api/auth/login')
+      .send({ username: 'accountant', password: 'accountant123' });
+    const accountantToken = loginRes.body.token;
+
+    const res = await request(app)
+      .post('/api/auth/register')
+      .set('Authorization', `Bearer ${accountantToken}`)
+      .send({
+        username: 'new_attendant',
+        password: 'password123',
+        role: 'attendant',
+        full_name: 'David New'
+      });
+
+    expect(res.statusCode).toBe(201);
+    expect(res.body.user.username).toBe('new_attendant');
+  });
+
+  it('should reject registration with duplicate username', async () => {
+    const loginRes = await request(app)
+      .post('/api/auth/login')
+      .send({ username: 'accountant', password: 'accountant123' });
+    const accountantToken = loginRes.body.token;
+
+    const res = await request(app)
+      .post('/api/auth/register')
+      .set('Authorization', `Bearer ${accountantToken}`)
+      .send({
+        username: 'new_attendant',
+        password: 'password123',
+        role: 'attendant',
+        full_name: 'David New Duplicate'
+      });
+
+    expect(res.statusCode).toBe(400);
+    expect(res.body.error).toContain('already taken');
+  });
+
+  it('should prevent standard attendants from registering new users', async () => {
+    const loginRes = await request(app)
+      .post('/api/auth/login')
+      .send({ username: 'attendant', password: 'attendant123' });
+    const attendantToken = loginRes.body.token;
+
+    const res = await request(app)
+      .post('/api/auth/register')
+      .set('Authorization', `Bearer ${attendantToken}`)
+      .send({
+        username: 'malicious_user',
+        password: 'password123',
+        role: 'attendant',
+        full_name: 'Malicious Attendant'
+      });
+
+    expect(res.statusCode).toBe(403);
+  });
 });

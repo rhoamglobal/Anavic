@@ -17,7 +17,7 @@ function initDatabase() {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       username TEXT UNIQUE NOT NULL,
       password TEXT NOT NULL,
-      role TEXT NOT NULL CHECK(role IN ('attendant', 'accountant')),
+      role TEXT NOT NULL CHECK(role IN ('attendant', 'accountant', 'boss')),
       full_name TEXT NOT NULL,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     );
@@ -123,7 +123,10 @@ function seedDefaultData() {
   if (userCount === 0) {
     const salt = bcrypt.genSaltSync(10);
     const attendantPassword = bcrypt.hashSync('attendant123', salt);
+    const attendant1Password = bcrypt.hashSync('attendant1', salt);
+    const attendant2Password = bcrypt.hashSync('attendant2', salt);
     const accountantPassword = bcrypt.hashSync('accountant123', salt);
+    const bossPassword = bcrypt.hashSync('boss123', salt);
 
     const insertUser = db.prepare(`
       INSERT INTO users (username, password, role, full_name)
@@ -131,7 +134,10 @@ function seedDefaultData() {
     `);
 
     insertUser.run('attendant', attendantPassword, 'attendant', 'John Doe (Attendant)');
+    insertUser.run('attendant1', attendant1Password, 'attendant', 'David Attendant (Mornings)');
+    insertUser.run('attendant2', attendant2Password, 'attendant', 'Sarah Attendant (Evenings)');
     insertUser.run('accountant', accountantPassword, 'accountant', 'Jane Smith (Accountant)');
+    insertUser.run('boss', bossPassword, 'boss', 'Anavic CEO (The Boss)');
     console.log('Database users seeded successfully.');
   }
 
@@ -141,8 +147,9 @@ function seedDefaultData() {
     const insertPrice = db.prepare(`
       INSERT INTO fuel_prices (fuel_type, price_per_liter) VALUES (?, ?)
     `);
-    insertPrice.run('diesel', 1.65);
-    insertPrice.run('petrol', 1.80);
+    // Seed default prices in Naira (₦): Diesel = 1100, Petrol = 950 per liter
+    insertPrice.run('diesel', 1100.0);
+    insertPrice.run('petrol', 950.0);
     console.log('Fuel prices seeded successfully.');
   }
 
@@ -152,8 +159,9 @@ function seedDefaultData() {
     const insertCustomer = db.prepare(`
       INSERT INTO credit_customers (name, custom_diesel_price, credit_limit, balance) VALUES (?, ?, ?, ?)
     `);
-    insertCustomer.run('Swift Logistics', 1.55, 10000.0, 0.0);
-    insertCustomer.run('Mega Construction', null, 5000.0, 0.0);
+    // Custom prices in Naira
+    insertCustomer.run('Swift Logistics', 1050.0, 5000000.0, 0.0);
+    insertCustomer.run('Mega Construction', null, 3000000.0, 0.0);
     console.log('Credit customers seeded successfully.');
   }
 }

@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const db = require('../db');
-const { requireAuth, requireRole } = require('../middleware');
+const { requireAuth, requireRole, requireAnyRole } = require('../middleware');
 
 // GET /api/tanks/prices - Get current standard fuel prices
 router.get('/prices', requireAuth, (req, res) => {
@@ -14,8 +14,8 @@ router.get('/prices', requireAuth, (req, res) => {
   }
 });
 
-// POST /api/tanks/prices - Update standard fuel prices (Accountant only)
-router.post('/prices', requireAuth, requireRole('accountant'), (req, res) => {
+// POST /api/tanks/prices - Update standard fuel prices (Accountant & Boss only)
+router.post('/prices', requireAuth, requireAnyRole(['accountant', 'boss']), (req, res) => {
   const { fuel_type, price_per_liter } = req.body;
 
   if (!fuel_type || price_per_liter === undefined) {
@@ -60,7 +60,6 @@ router.get('/', requireAuth, (req, res) => {
     // Enrich logs with sales and variance analysis
     const enrichedDips = dips.map(dip => {
       // Find total liters sold on this date from shift meters
-      // Let's parse matching shifts that were opened on this date (UTC matching date part)
       const salesQuery = db.prepare(`
         SELECT
           SUM(CASE WHEN sm.fuel_type = 'diesel' THEN (sm.end_meter - sm.start_meter) ELSE 0 END) as diesel_sold,
@@ -73,7 +72,6 @@ router.get('/', requireAuth, (req, res) => {
       const dieselSold = salesQuery?.diesel_sold || 0;
       const petrolSold = salesQuery?.petrol_sold || 0;
 
-      // Calculations:
       // Expected Ending = Starting + Delivery - Sold
       const dieselExpected = dip.diesel_start_dip + dip.diesel_delivery - dieselSold;
       const petrolExpected = dip.petrol_start_dip + dip.petrol_delivery - petrolSold;
@@ -100,8 +98,8 @@ router.get('/', requireAuth, (req, res) => {
   }
 });
 
-// POST /api/tanks - Record new tank dip levels & supplier deliveries (Accountant only)
-router.post('/', requireAuth, requireRole('accountant'), (req, res) => {
+// POST /api/tanks - Record new tank dip levels & supplier deliveries (Accountant & Boss only)
+router.post('/', requireAuth, requireAnyRole(['accountant', 'boss']), (req, res) => {
   const {
     date,
     diesel_start_dip,
