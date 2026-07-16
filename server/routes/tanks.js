@@ -47,6 +47,67 @@ router.post('/prices', requireAuth, requireAnyRole(['accountant', 'boss']), (req
   }
 });
 
+// GET /api/tanks/status - Fetch live stock estimation in real-time
+router.get('/status', requireAuth, (req, res) => {
+  try {
+    // Get the latest recorded dip level
+    const latestDip = db.prepare(`
+      SELECT * FROM tank_inventory
+      ORDER BY date DESC, created_at DESC
+      LIMIT 1
+    `).get();
+
+    let dieselBase = 30000.0; // standard initial stock default
+    let petrolBase = 25000.0; // standard initial stock default
+    let baseDate = '1970-01-01';
+    let baseTimestamp = '1970-01-01 00:00:00';
+    let lastRecordedDate = 'None';
+
+    if (latestDip) {
+      dieselBase = latestDip.diesel_end_dip;
+      petrolBase = latestDip.petrol_end_dip;
+      baseDate = latestDip.date;
+      baseTimestamp = latestDip.created_at;
+      lastRecordedDate = latestDip.date;
+    }
+
+    // Sum all liters sold across closed/approved shifts opened after the last dip timestamp
+    const sales = db.prepare(`
+      SELECT
+        SUM(CASE WHEN sm.fuel_type = 'diesel' THEN (sm.end_meter - sm.start_meter) ELSE 0 END) as diesel_sold,
+        SUM(CASE WHEN sm.fuel_type = 'petrol' THEN (sm.end_meter - sm.start_meter) ELSE 0 END) as petrol_sold
+      FROM shift_meters sm
+      JOIN shifts s ON sm.shift_id = s.id
+      WHERE s.status IN ('closed', 'approved')
+        AND (s.opened_at > ? OR strftime('%Y-%m-%d', s.opened_at) > ?)
+    `).get(baseTimestamp, baseDate);
+
+    const dieselSoldSince = sales?.diesel_sold || 0;
+    const petrolSoldSince = sales?.petrol_sold || 0;
+
+    // Calculate live estimations
+    const dieselLive = Math.max(0, dieselBase - dieselSoldSince);
+    const petrolLive = Math.max(0, petrolBase - petrolSoldSince);
+
+    res.json({
+      diesel: {
+        last_physical_dip: dieselBase,
+        sold_since_last_dip: dieselSoldSince,
+        live_estimated_stock: dieselLive
+      },
+      petrol: {
+        last_physical_dip: petrolBase,
+        sold_since_last_dip: petrolSoldSince,
+        live_estimated_stock: petrolLive
+      },
+      last_physical_date: lastRecordedDate
+    });
+  } catch (err) {
+    console.error('Error calculating live tank status:', err);
+    res.status(500).json({ error: 'Failed to calculate real-time wet stock tank levels.' });
+  }
+});
+
 // GET /api/tanks - Get historical tank inventory and wet stock reconciliation reports
 router.get('/', requireAuth, (req, res) => {
   try {

@@ -14,8 +14,8 @@ router.get('/', requireAuth, (req, res) => {
   }
 });
 
-// POST /api/customers - Create a new credit customer (Accountant & Boss only)
-router.post('/', requireAuth, requireAnyRole(['accountant', 'boss']), (req, res) => {
+// POST /api/customers - Create a new credit customer (Boss only!)
+router.post('/', requireAuth, requireRole('boss'), (req, res) => {
   const { name, custom_diesel_price, credit_limit } = req.body;
 
   if (!name) {
@@ -54,8 +54,8 @@ router.post('/', requireAuth, requireAnyRole(['accountant', 'boss']), (req, res)
   }
 });
 
-// PUT /api/customers/:id - Edit corporate customer (Accountant & Boss only)
-router.put('/:id', requireAuth, requireAnyRole(['accountant', 'boss']), (req, res) => {
+// PUT /api/customers/:id - Edit corporate customer full profile (Boss only!)
+router.put('/:id', requireAuth, requireRole('boss'), (req, res) => {
   const customerId = parseInt(req.params.id);
   const { name, custom_diesel_price, credit_limit, status } = req.body;
 
@@ -106,8 +106,42 @@ router.put('/:id', requireAuth, requireAnyRole(['accountant', 'boss']), (req, re
   }
 });
 
-// DELETE /api/customers/:id - Delete corporate customer (Accountant & Boss only)
-router.delete('/:id', requireAuth, requireAnyRole(['accountant', 'boss']), (req, res) => {
+// PUT /api/customers/:id/custom-price - Edit ONLY corporate customer custom pricing (Accountant & Boss!)
+router.put('/:id/custom-price', requireAuth, requireAnyRole(['accountant', 'boss']), (req, res) => {
+  const customerId = parseInt(req.params.id);
+  const { custom_diesel_price } = req.body;
+
+  if (isNaN(customerId)) {
+    return res.status(400).json({ error: 'Invalid customer ID.' });
+  }
+
+  const customPrice = custom_diesel_price !== undefined && custom_diesel_price !== '' && custom_diesel_price !== null ? parseFloat(custom_diesel_price) : null;
+
+  if (customPrice !== null && (isNaN(customPrice) || customPrice < 0)) {
+    return res.status(400).json({ error: 'Custom diesel price must be a positive number.' });
+  }
+
+  try {
+    const customer = db.prepare('SELECT id FROM credit_customers WHERE id = ?').get(customerId);
+    if (!customer) {
+      return res.status(404).json({ error: 'Credit customer not found.' });
+    }
+
+    db.prepare(`
+      UPDATE credit_customers
+      SET custom_diesel_price = ?
+      WHERE id = ?
+    `).run(customPrice, customerId);
+
+    res.json({ message: 'Corporate custom price updated successfully.', custom_diesel_price: customPrice });
+  } catch (err) {
+    console.error('Error updating custom price:', err);
+    res.status(500).json({ error: 'Failed to update custom price.' });
+  }
+});
+
+// DELETE /api/customers/:id - Delete corporate customer (Boss only!)
+router.delete('/:id', requireAuth, requireRole('boss'), (req, res) => {
   const customerId = parseInt(req.params.id);
 
   if (isNaN(customerId)) {
@@ -212,7 +246,7 @@ router.get('/:id/ledger', requireAuth, (req, res) => {
 // POST /api/customers/:id/payments - Record a payment from a corporate customer (Accountant & Boss only)
 router.post('/:id/payments', requireAuth, requireAnyRole(['accountant', 'boss']), (req, res) => {
   const customerId = parseInt(req.params.id);
-  const { amount, payment_method, reference_no } = req.body;
+  const { amount, payment_method, reference_no, payment_date } = req.body;
 
   if (isNaN(customerId)) {
     return res.status(400).json({ error: 'Invalid customer ID.' });
@@ -227,6 +261,9 @@ router.post('/:id/payments', requireAuth, requireAnyRole(['accountant', 'boss'])
     return res.status(400).json({ error: 'Payment amount must be a positive number.' });
   }
 
+  // Allow custom payment dates to support backdated logs!
+  const finalDate = payment_date || new Date().toISOString();
+
   try {
     const customer = db.prepare('SELECT * FROM credit_customers WHERE id = ?').get(customerId);
     if (!customer) {
@@ -236,9 +273,9 @@ router.post('/:id/payments', requireAuth, requireAnyRole(['accountant', 'boss'])
     // Process payment in a transaction
     const paymentTx = db.transaction(() => {
       db.prepare(`
-        INSERT INTO customer_payments (customer_id, amount, payment_method, reference_no, recorded_by)
-        VALUES (?, ?, ?, ?, ?)
-      `).run(customerId, amtVal, payment_method, reference_no || null, req.user.id);
+        INSERT INTO customer_payments (customer_id, amount, payment_method, reference_no, payment_date, recorded_by)
+        VALUES (?, ?, ?, ?, ?, ?)
+      `).run(customerId, amtVal, payment_method, reference_no || null, finalDate, req.user.id);
 
       db.prepare(`
         UPDATE credit_customers

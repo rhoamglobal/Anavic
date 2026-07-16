@@ -164,6 +164,93 @@ describe('Pump Attendant Shift Operations', () => {
     expect(res.body.error).toContain('is currently INACTIVE');
   });
 
+  it('should edit a credit sale during an active open shift successfully', async () => {
+    await request(app)
+      .post('/api/shifts/open')
+      .set('Authorization', `Bearer ${attendantToken}`)
+      .send({
+        opening_float: 100.0,
+        diesel_start_meter: 1000.0,
+        petrol_start_meter: 5000.0
+      });
+
+    const customer = db.prepare("SELECT * FROM credit_customers WHERE name = 'Swift Logistics'").get();
+
+    // Initial log of credit sale: 100 liters * 1050.00 = 105,000.00 Naira
+    const logRes = await request(app)
+      .post('/api/shifts/credit-sale')
+      .set('Authorization', `Bearer ${attendantToken}`)
+      .send({
+        customer_id: customer.id,
+        fuel_type: 'diesel',
+        liters: 100.0
+      });
+
+    expect(logRes.statusCode).toBe(201);
+
+    const loggedSale = db.prepare("SELECT * FROM credit_sales WHERE customer_id = ?").get(customer.id);
+    expect(loggedSale).toBeDefined();
+
+    // Verify customer balance got updated to 105,000.00
+    let customerCheck = db.prepare("SELECT balance FROM credit_customers WHERE id = ?").get(customer.id);
+    expect(customerCheck.balance).toBe(105000.00);
+
+    // Edit the credit sale: Change liters to 50
+    const editRes = await request(app)
+      .put(`/api/shifts/credit-sale/${loggedSale.id}`)
+      .set('Authorization', `Bearer ${attendantToken}`)
+      .send({
+        liters: 50.0
+      });
+
+    expect(editRes.statusCode).toBe(200);
+    expect(editRes.body.newTotalAmount).toBe(52500.00);
+
+    // Verify customer balance got adjusted down to 52,500.00
+    customerCheck = db.prepare("SELECT balance FROM credit_customers WHERE id = ?").get(customer.id);
+    expect(customerCheck.balance).toBe(52500.00);
+  });
+
+  it('should delete a credit sale during an active open shift successfully', async () => {
+    await request(app)
+      .post('/api/shifts/open')
+      .set('Authorization', `Bearer ${attendantToken}`)
+      .send({
+        opening_float: 100.0,
+        diesel_start_meter: 1000.0,
+        petrol_start_meter: 5000.0
+      });
+
+    const customer = db.prepare("SELECT * FROM credit_customers WHERE name = 'Swift Logistics'").get();
+
+    // Log credit sale: 100 liters * 1050.00 = 105,000.00 Naira
+    const logRes = await request(app)
+      .post('/api/shifts/credit-sale')
+      .set('Authorization', `Bearer ${attendantToken}`)
+      .send({
+        customer_id: customer.id,
+        fuel_type: 'diesel',
+        liters: 100.0
+      });
+
+    const loggedSale = db.prepare("SELECT * FROM credit_sales WHERE customer_id = ?").get(customer.id);
+
+    // Delete the credit sale
+    const delRes = await request(app)
+      .delete(`/api/shifts/credit-sale/${loggedSale.id}`)
+      .set('Authorization', `Bearer ${attendantToken}`);
+
+    expect(delRes.statusCode).toBe(200);
+
+    // Verify sale row is gone
+    const checkSale = db.prepare("SELECT * FROM credit_sales WHERE id = ?").get(loggedSale.id);
+    expect(checkSale).toBeUndefined();
+
+    // Verify customer balance reverted to 0
+    const customerCheck = db.prepare("SELECT balance FROM credit_customers WHERE id = ?").get(customer.id);
+    expect(customerCheck.balance).toBe(0.00);
+  });
+
   it('should close shift, record POS actual card transactions, and calculate expected cash correctly', async () => {
     // Open shift with standard prices: Diesel = 1100, Petrol = 950
     await request(app)

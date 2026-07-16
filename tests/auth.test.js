@@ -59,15 +59,15 @@ describe('Authentication & Staff Management API', () => {
     expect(meRes.body.user).toHaveProperty('username', 'attendant');
   });
 
-  it('should allow accountant/boss to register a new user', async () => {
+  it('should allow boss to register a new user', async () => {
     const loginRes = await request(app)
       .post('/api/auth/login')
-      .send({ username: 'accountant', password: 'accountant123' });
-    const accountantToken = loginRes.body.token;
+      .send({ username: 'boss', password: 'boss123' });
+    const bossToken = loginRes.body.token;
 
     const res = await request(app)
       .post('/api/auth/register')
-      .set('Authorization', `Bearer ${accountantToken}`)
+      .set('Authorization', `Bearer ${bossToken}`)
       .send({
         username: 'new_attendant',
         password: 'password123',
@@ -82,12 +82,12 @@ describe('Authentication & Staff Management API', () => {
   it('should reject registration with duplicate username', async () => {
     const loginRes = await request(app)
       .post('/api/auth/login')
-      .send({ username: 'accountant', password: 'accountant123' });
-    const accountantToken = loginRes.body.token;
+      .send({ username: 'boss', password: 'boss123' });
+    const bossToken = loginRes.body.token;
 
     await request(app)
       .post('/api/auth/register')
-      .set('Authorization', `Bearer ${accountantToken}`)
+      .set('Authorization', `Bearer ${bossToken}`)
       .send({
         username: 'new_attendant',
         password: 'password123',
@@ -97,7 +97,7 @@ describe('Authentication & Staff Management API', () => {
 
     const res = await request(app)
       .post('/api/auth/register')
-      .set('Authorization', `Bearer ${accountantToken}`)
+      .set('Authorization', `Bearer ${bossToken}`)
       .send({
         username: 'new_attendant',
         password: 'password123',

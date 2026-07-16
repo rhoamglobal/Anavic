@@ -3,7 +3,7 @@ const { app } = require('../server/app');
 const db = require('../server/db');
 
 describe('Corporate Credit Ledgers & Accountant Operations', () => {
-  let accountantToken;
+  let bossToken;
   let customerId;
 
   beforeAll(async () => {
@@ -12,17 +12,17 @@ describe('Corporate Credit Ledgers & Accountant Operations', () => {
     db.prepare("DELETE FROM credit_sales").run();
     db.prepare("DELETE FROM credit_customers").run();
 
-    // Login as accountant
+    // Login as boss
     const loginRes = await request(app)
       .post('/api/auth/login')
-      .send({ username: 'accountant', password: 'accountant123' });
-    accountantToken = loginRes.body.token;
+      .send({ username: 'boss', password: 'boss123' });
+    bossToken = loginRes.body.token;
   });
 
   it('should successfully create a new credit customer', async () => {
     const res = await request(app)
       .post('/api/customers')
-      .set('Authorization', `Bearer ${accountantToken}`)
+      .set('Authorization', `Bearer ${bossToken}`)
       .send({
         name: 'Globex Corp',
         custom_diesel_price: 1.45,
@@ -37,7 +37,7 @@ describe('Corporate Credit Ledgers & Accountant Operations', () => {
   it('should prevent creating customer with duplicate name', async () => {
     const res = await request(app)
       .post('/api/customers')
-      .set('Authorization', `Bearer ${accountantToken}`)
+      .set('Authorization', `Bearer ${bossToken}`)
       .send({
         name: 'Globex Corp',
         custom_diesel_price: 1.50,
@@ -51,7 +51,7 @@ describe('Corporate Credit Ledgers & Accountant Operations', () => {
   it('should fetch all credit customers', async () => {
     const res = await request(app)
       .get('/api/customers')
-      .set('Authorization', `Bearer ${accountantToken}`);
+      .set('Authorization', `Bearer ${bossToken}`);
 
     expect(res.statusCode).toBe(200);
     expect(res.body.length).toBeGreaterThan(0);
@@ -93,6 +93,11 @@ describe('Corporate Credit Ledgers & Accountant Operations', () => {
     expect(customerCheck.balance).toBe(145.00);
 
     // 2. Record payment of $100.00 from Globex Corp by Accountant
+    const accLoginRes = await request(app)
+      .post('/api/auth/login')
+      .send({ username: 'accountant', password: 'accountant123' });
+    const accountantToken = accLoginRes.body.token;
+
     const paymentRes = await request(app)
       .post(`/api/customers/${customerId}/payments`)
       .set('Authorization', `Bearer ${accountantToken}`)

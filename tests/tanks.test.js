@@ -78,4 +78,16 @@ describe('Tanks Inventory & Prices Management', () => {
     expect(log).toHaveProperty('diesel_variance');
     expect(log).toHaveProperty('petrol_variance');
   });
+
+  it('should return live stock status reflecting real-time sales correctly', async () => {
+    const res = await request(app)
+      .get('/api/tanks/status')
+      .set('Authorization', `Bearer ${accountantToken}`);
+
+    expect(res.statusCode).toBe(200);
+    expect(res.body).toHaveProperty('diesel');
+    expect(res.body).toHaveProperty('petrol');
+    expect(res.body.diesel.live_estimated_stock).toBeDefined();
+    expect(res.body.petrol.live_estimated_stock).toBeDefined();
+  });
 });

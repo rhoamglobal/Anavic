@@ -1,9 +1,9 @@
 const express = require('express');
-const router = express.Router();
+const router = Router = express.Router();
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const db = require('../db');
-const { JWT_SECRET, requireAuth, requireAnyRole } = require('../middleware');
+const { JWT_SECRET, requireAuth, requireRole, requireAnyRole } = require('../middleware');
 
 // POST /api/auth/login
 router.post('/login', (req, res) => {
@@ -51,8 +51,8 @@ router.get('/me', requireAuth, (req, res) => {
   res.json({ user: req.user });
 });
 
-// POST /api/auth/register - Register a new user (Accountant & Boss only)
-router.post('/register', requireAuth, requireAnyRole(['accountant', 'boss']), (req, res) => {
+// POST /api/auth/register - Register a new user (Boss only now!)
+router.post('/register', requireAuth, requireRole('boss'), (req, res) => {
   const { username, password, role, full_name } = req.body;
 
   if (!username || !password || !role || !full_name) {
@@ -93,8 +93,8 @@ router.post('/register', requireAuth, requireAnyRole(['accountant', 'boss']), (r
   }
 });
 
-// GET /api/auth/users - List all users (Accountant & Boss only)
-router.get('/users', requireAuth, requireAnyRole(['accountant', 'boss']), (req, res) => {
+// GET /api/auth/users - List all users (Boss only now!)
+router.get('/users', requireAuth, requireRole('boss'), (req, res) => {
   try {
     const users = db.prepare('SELECT id, username, role, full_name, created_at FROM users ORDER BY full_name ASC').all();
     res.json(users);
@@ -104,8 +104,8 @@ router.get('/users', requireAuth, requireAnyRole(['accountant', 'boss']), (req, 
   }
 });
 
-// POST /api/auth/users/:id/password - Change a user's password (Accountant & Boss only)
-router.post('/users/:id/password', requireAuth, requireAnyRole(['accountant', 'boss']), (req, res) => {
+// POST /api/auth/users/:id/password - Change a user's password (Boss only now!)
+router.post('/users/:id/password', requireAuth, requireRole('boss'), (req, res) => {
   const targetUserId = parseInt(req.params.id);
   const { password } = req.body;
 
@@ -135,8 +135,8 @@ router.post('/users/:id/password', requireAuth, requireAnyRole(['accountant', 'b
   }
 });
 
-// DELETE /api/auth/users/:id - Delete a user's account (Accountant & Boss only)
-router.delete('/users/:id', requireAuth, requireAnyRole(['accountant', 'boss']), (req, res) => {
+// DELETE /api/auth/users/:id - Delete a user's account (Boss only now!)
+router.delete('/users/:id', requireAuth, requireRole('boss'), (req, res) => {
   const targetUserId = parseInt(req.params.id);
 
   if (isNaN(targetUserId)) {
@@ -154,8 +154,6 @@ router.delete('/users/:id', requireAuth, requireAnyRole(['accountant', 'boss']),
       return res.status(404).json({ error: 'User account not found.' });
     }
 
-    // Use transaction to ensure shift constraints or other records remain intact
-    // (In our SQLite schemas, deletions are clean; shifts keep references but we can check if active shifts are open first)
     const activeShift = db.prepare(`
       SELECT id FROM shifts WHERE attendant_id = ? AND status = 'open'
     `).get(targetUserId);

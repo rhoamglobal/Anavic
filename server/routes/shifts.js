@@ -224,6 +224,130 @@ router.post('/credit-sale', requireAuth, requireRole('attendant'), (req, res) =>
   }
 });
 
+// PUT /api/shifts/credit-sale/:id - Edit a credit sale (Attendants can edit during active open shifts)
+router.put('/credit-sale/:id', requireAuth, requireRole('attendant'), (req, res) => {
+  const saleId = parseInt(req.params.id);
+  const { liters } = req.body;
+
+  if (isNaN(saleId)) {
+    return res.status(400).json({ error: 'Invalid credit sale ID.' });
+  }
+
+  const litersVal = parseFloat(liters);
+  if (isNaN(litersVal) || litersVal <= 0) {
+    return res.status(400).json({ error: 'Liters must be a positive number.' });
+  }
+
+  try {
+    const sale = db.prepare('SELECT * FROM credit_sales WHERE id = ?').get(saleId);
+    if (!sale) {
+      return res.status(404).json({ error: 'Credit sale record not found.' });
+    }
+
+    // Verify shift status is still open
+    const shift = db.prepare('SELECT * FROM shifts WHERE id = ?').get(sale.shift_id);
+    if (!shift) {
+      return res.status(404).json({ error: 'Associated shift not found.' });
+    }
+
+    if (shift.status !== 'open') {
+      return res.status(400).json({ error: 'Action denied. Credit sales can only be edited while their shift is still open.' });
+    }
+
+    // Verify the attendant logged in is the owner of this shift
+    if (shift.attendant_id !== req.user.id) {
+      return res.status(403).json({ error: 'Action denied. You can only edit credit sales from your own shift.' });
+    }
+
+    const customer = db.prepare('SELECT * FROM credit_customers WHERE id = ?').get(sale.customer_id);
+    if (!customer) {
+      return res.status(404).json({ error: 'Associated credit customer not found.' });
+    }
+
+    const newTotalAmount = litersVal * sale.price_per_liter;
+    const balanceDiff = newTotalAmount - sale.total_amount;
+
+    // Check Credit Limit with new balance diff
+    if (customer.balance + balanceDiff > customer.credit_limit) {
+      return res.status(400).json({
+        error: `Credit limit exceeded. Current Balance: ₦${customer.balance.toFixed(2)}, ` +
+               `Limit: ₦${customer.credit_limit.toFixed(2)}. This edit would exceed limit by ₦${(customer.balance + balanceDiff - customer.credit_limit).toFixed(2)}.`
+      });
+    }
+
+    // Transaction to update credit sale and rollback/update balance
+    const updateSaleTx = db.transaction(() => {
+      db.prepare(`
+        UPDATE credit_sales
+        SET liters = ?, total_amount = ?
+        WHERE id = ?
+      `).run(litersVal, newTotalAmount, saleId);
+
+      db.prepare(`
+        UPDATE credit_customers
+        SET balance = balance + ?
+        WHERE id = ?
+      `).run(balanceDiff, customer.id);
+    });
+
+    updateSaleTx();
+
+    res.json({ message: 'Credit sale updated successfully.', newTotalAmount });
+  } catch (err) {
+    console.error('Error editing credit sale:', err);
+    res.status(500).json({ error: 'Failed to update credit sale.' });
+  }
+});
+
+// DELETE /api/shifts/credit-sale/:id - Delete a credit sale (Attendants can delete during active open shifts)
+router.delete('/credit-sale/:id', requireAuth, requireRole('attendant'), (req, res) => {
+  const saleId = parseInt(req.params.id);
+
+  if (isNaN(saleId)) {
+    return res.status(400).json({ error: 'Invalid credit sale ID.' });
+  }
+
+  try {
+    const sale = db.prepare('SELECT * FROM credit_sales WHERE id = ?').get(saleId);
+    if (!sale) {
+      return res.status(404).json({ error: 'Credit sale record not found.' });
+    }
+
+    // Verify shift status is open
+    const shift = db.prepare('SELECT * FROM shifts WHERE id = ?').get(sale.shift_id);
+    if (!shift) {
+      return res.status(404).json({ error: 'Associated shift not found.' });
+    }
+
+    if (shift.status !== 'open') {
+      return res.status(400).json({ error: 'Action denied. Credit sales can only be deleted while their shift is still open.' });
+    }
+
+    // Verify attendant is shift owner
+    if (shift.attendant_id !== req.user.id) {
+      return res.status(403).json({ error: 'Action denied. You can only delete credit sales from your own shift.' });
+    }
+
+    // Transaction to delete sale and revert customer balance
+    const deleteSaleTx = db.transaction(() => {
+      db.prepare(`
+        UPDATE credit_customers
+        SET balance = balance - ?
+        WHERE id = ?
+      `).run(sale.total_amount, sale.customer_id);
+
+      db.prepare('DELETE FROM credit_sales WHERE id = ?').run(saleId);
+    });
+
+    deleteSaleTx();
+
+    res.json({ message: 'Credit sale deleted successfully.' });
+  } catch (err) {
+    console.error('Error deleting credit sale:', err);
+    res.status(500).json({ error: 'Failed to delete credit sale.' });
+  }
+});
+
 // POST /api/shifts/close - Close active shift, record POS Card Sales, and calculate final reconciliation
 router.post('/close', requireAuth, requireRole('attendant'), (req, res) => {
   const { diesel_end_meter, petrol_end_meter, closing_cash_actual, closing_pos_actual } = req.body;

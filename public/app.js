@@ -66,9 +66,19 @@ function setupUserEnvironment() {
   } else if (state.user.role === 'accountant' || state.user.role === 'boss') {
     showScreen('accountantArea');
 
-    // Hide register user button if not Boss
+    // Manage dynamic visibility based on permissions
+    const isBoss = state.user.role === 'boss';
+
+    // Show/hide Boss-specific UI controls
+    const addCustomerBtn = document.getElementById('addCustomerBtn');
+    if (addCustomerBtn) addCustomerBtn.style.display = isBoss ? 'block' : 'none';
+
+    const addStaffBtn = document.getElementById('addStaffBtn');
+    if (addStaffBtn) addStaffBtn.style.display = isBoss ? 'block' : 'none';
+
+    // Staff tab itself is visible to both Accountant & Boss
     const staffBtn = document.getElementById('btn-staffTab');
-    staffBtn.classList.remove('hidden');
+    if (staffBtn) staffBtn.classList.remove('hidden');
 
     switchAccountantTab('shiftsTab');
   }
@@ -160,7 +170,7 @@ function renderActiveShift() {
 
   const shift = state.activeShift;
   document.getElementById('shiftIDVal').innerText = `#${shift.id}`;
-  document.getElementById('shiftFloatVal').innerText = `₦${shift.opening_float.toLocaleString()}`;
+  document.getElementById('shiftAttendantVal').innerText = state.user.fullName.split(' ')[0];
 
   const openedDate = new Date(shift.opened_at);
   document.getElementById('shiftOpenedTime').innerText = openedDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) + ' ' + openedDate.toLocaleDateString();
@@ -196,7 +206,7 @@ function renderActiveShift() {
   }
   document.getElementById('shiftExpenseTally').innerText = `Expenses: ₦${totalExpenses.toLocaleString()}`;
 
-  // Credit sales summary list
+  // Credit sales summary list with interactive corrections triggers
   const creditList = document.getElementById('shiftCreditSalesList');
   let totalCredit = 0;
   if (shift.creditSales.length === 0) {
@@ -205,12 +215,24 @@ function renderActiveShift() {
     creditList.innerHTML = shift.creditSales.map(c => {
       totalCredit += c.total_amount;
       return `
-        <div class="flex items-center justify-between p-2 bg-emerald-50/50 border border-emerald-100 rounded-lg text-xs">
-          <div>
+        <div class="p-3 bg-emerald-50/50 border border-emerald-100 rounded-lg text-xs space-y-2">
+          <div class="flex items-center justify-between">
             <span class="font-bold text-slate-800">${c.customer_name}</span>
-            <p class="text-[10px] text-slate-400 mt-0.5">${c.liters.toFixed(2)}L ${c.fuel_type} @ ₦${c.price_per_liter.toLocaleString()}</p>
+            <span class="font-bold text-emerald-700">₦${c.total_amount.toLocaleString()}</span>
           </div>
-          <span class="font-bold text-emerald-700">+₦${c.total_amount.toLocaleString()}</span>
+          <div class="flex items-center justify-between text-[10px]">
+            <span class="text-slate-400">${c.liters.toFixed(2)}L ${c.fuel_type} @ ₦${c.price_per_liter.toLocaleString()}</span>
+
+            <!-- Safe action block hidden behind dropdown style correction trigger -->
+            <div class="flex items-center space-x-1.5">
+              <button onclick="triggerEditCreditSale(${c.id}, '${c.customer_name}', '${c.fuel_type.toUpperCase()}', ${c.liters})" class="px-1.5 py-0.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded text-[9px] transition">
+                <i class="fa-solid fa-pen"></i> Correct
+              </button>
+              <button onclick="triggerDeleteCreditSale(${c.id}, '${c.customer_name}')" class="px-1.5 py-0.5 bg-red-100 hover:bg-red-200 text-red-600 font-bold rounded text-[9px] transition">
+                <i class="fa-solid fa-trash"></i> Delete
+              </button>
+            </div>
+          </div>
         </div>
       `;
     }).join('');
@@ -242,7 +264,6 @@ async function handleOpenShift(e) {
       showToast('Shift opened successfully!', 'success');
       toggleModal('openShiftModal', false);
       // Reset input fields
-      document.getElementById('openFloatInput').value = '';
       document.getElementById('openDieselMeterInput').value = '';
       document.getElementById('openPetrolMeterInput').value = '';
       document.getElementById('openDieselPriceInput').value = '';
@@ -351,6 +372,68 @@ async function handleLogCreditSale(e) {
     }
   } catch (err) {
     console.error('Error logging credit sale:', err);
+  }
+}
+
+// Trigger edit modal for a logged credit sale
+function triggerEditCreditSale(saleId, customerName, fuelType, liters) {
+  document.getElementById('editCreditSaleId').value = saleId;
+  document.getElementById('editCreditSaleCustomerLabel').innerText = customerName;
+  document.getElementById('editCreditSaleFuelLabel').innerText = fuelType;
+  document.getElementById('editCreditSaleLitersInput').value = liters;
+
+  toggleModal('editCreditSaleModal', true);
+}
+
+// Submit credit sale edit
+async function handleSubmitEditCreditSale(e) {
+  e.preventDefault();
+  const saleId = document.getElementById('editCreditSaleId').value;
+  const liters = document.getElementById('editCreditSaleLitersInput').value;
+
+  try {
+    const res = await fetch(`${API_URL}/api/shifts/credit-sale/${saleId}`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${state.token}`
+      },
+      body: JSON.stringify({ liters })
+    });
+
+    const data = await res.json();
+    if (res.ok) {
+      showToast('Credit sale corrected successfully!', 'success');
+      toggleModal('editCreditSaleModal', false);
+      loadActiveShift();
+    } else {
+      showToast(data.error || 'Failed to correct credit sale.', 'error');
+    }
+  } catch (err) {
+    console.error('Error submitting credit sale correction:', err);
+  }
+}
+
+// Trigger deletion for a logged credit sale (with double confirmation block)
+async function triggerDeleteCreditSale(saleId, customerName) {
+  const check = confirm(`Are you absolutely sure you want to completely remove this corporate sale for "${customerName}"?`);
+  if (!check) return;
+
+  try {
+    const res = await fetch(`${API_URL}/api/shifts/credit-sale/${saleId}`, {
+      method: 'DELETE',
+      headers: { 'Authorization': `Bearer ${state.token}` }
+    });
+
+    const data = await res.json();
+    if (res.ok) {
+      showToast('Credit sale removed successfully.', 'success');
+      loadActiveShift();
+    } else {
+      showToast(data.error || 'Failed to remove credit sale.', 'error');
+    }
+  } catch (err) {
+    console.error('Error deleting credit sale:', err);
   }
 }
 
@@ -528,6 +611,7 @@ function switchAccountantTab(tabId) {
     loadCorporateCustomers();
   } else if (tabId === 'tanksTab') {
     loadTankReports();
+    loadLiveTankStatus();
   } else if (tabId === 'staffTab') {
     loadStaffDirectory();
   }
@@ -1033,6 +1117,38 @@ async function handleEditCustomerSubmit(e) {
   }
 }
 
+// Accountant custom price update handler (Restricted to Accountants & Boss)
+async function handleUpdateCustomPrice() {
+  const price = document.getElementById('customPriceInput').value;
+  if (!price) {
+    showToast('Please enter a custom diesel price first.', 'error');
+    return;
+  }
+
+  try {
+    const res = await fetch(`${API_URL}/api/customers/${state.selectedCustomerId}/custom-price`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${state.token}`
+      },
+      body: JSON.stringify({ custom_diesel_price: price })
+    });
+
+    const data = await res.json();
+    if (res.ok) {
+      showToast(`Corporate custom rate updated to ₦${data.custom_diesel_price.toLocaleString()}/L`, 'success');
+      document.getElementById('customPriceInput').value = '';
+      loadCorporateCustomers();
+      loadCustomerLedger(state.selectedCustomerId);
+    } else {
+      showToast(data.error || 'Failed to update custom price.', 'error');
+    }
+  } catch (err) {
+    console.error('Error updating custom price:', err);
+  }
+}
+
 // Delete corporate customer account
 async function handleDeleteCustomer() {
   const customer = state.customers.find(c => c.id === state.selectedCustomerId);
@@ -1097,6 +1213,14 @@ async function loadCustomerLedger(customerId) {
         balBadge.className = 'text-xl font-bold text-red-600';
       }
 
+      // Show/hide Boss profile action buttons dynamically based on roles
+      const isBoss = state.user.role === 'boss';
+      const editBtn = document.getElementById('editCustomerProfileBtn');
+      const deleteBtn = document.getElementById('deleteCustomerProfileBtn');
+
+      if (editBtn) editBtn.style.display = isBoss ? 'block' : 'none';
+      if (deleteBtn) deleteBtn.style.display = isBoss ? 'block' : 'none';
+
       // Render table rows
       const tbody = document.getElementById('ledgerTableBody');
       if (ledger.length === 0) {
@@ -1105,7 +1229,7 @@ async function loadCustomerLedger(customerId) {
       }
 
       tbody.innerHTML = ledger.map(line => {
-        const dateStr = new Date(line.date).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' });
+        const dateStr = new Date(line.date).toLocaleDateString() + ' ' + new Date(line.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
         const details = line.type === 'purchase'
           ? `Fuel Taken: ${line.liters.toFixed(2)}L ${line.fuel_type.toUpperCase()} @ ₦${line.price_per_liter.toLocaleString()}/L`
           : `Payment Received (${line.payment_method}) ${line.reference_no ? `- Ref# ${line.reference_no}` : ''} (Rec: ${line.recorded_by_name})`;
@@ -1114,7 +1238,7 @@ async function loadCustomerLedger(customerId) {
         const credit = line.type === 'payment' ? `-₦${line.amount.toLocaleString()}` : '---';
 
         return `
-          <tr class="hover:bg-slate-50/50 transition">
+          <tr class="hover:bg-slate-50/50 transition border-b border-slate-100">
             <td class="px-4 py-3 text-slate-500">${dateStr}</td>
             <td class="px-4 py-3 font-semibold text-slate-800">${details}</td>
             <td class="px-4 py-3 text-right font-bold text-red-600">${debit}</td>
@@ -1162,6 +1286,23 @@ async function handleRecordPayment() {
     }
   } catch (err) {
     console.error('Error submitting payment details:', err);
+  }
+}
+
+// Load real-time live stock status estimation levels
+async function loadLiveTankStatus() {
+  try {
+    const res = await fetch(`${API_URL}/api/tanks/status`, {
+      headers: { 'Authorization': `Bearer ${state.token}` }
+    });
+
+    if (res.ok) {
+      const data = await res.json();
+      document.getElementById('liveDieselStockLabel').innerText = `${data.diesel.live_estimated_stock.toFixed(2)} Liters`;
+      document.getElementById('livePetrolStockLabel').innerText = `${data.petrol.live_estimated_stock.toFixed(2)} Liters`;
+    }
+  } catch (err) {
+    console.error('Error fetching live tank status:', err);
   }
 }
 
@@ -1256,6 +1397,7 @@ async function handleRecordDips(e) {
       document.getElementById('dipPetrolDeliv').value = '';
       document.getElementById('dipPetrolEnd').value = '';
       loadTankReports();
+      loadLiveTankStatus();
     } else {
       showToast(data.error || 'Failed to record dips.', 'error');
     }
@@ -1274,16 +1416,21 @@ async function loadStaffDirectory() {
     if (res.ok) {
       const users = await res.json();
       const tbody = document.getElementById('staffDirectoryBody');
+      const isBoss = state.user.role === 'boss';
 
       tbody.innerHTML = users.map(u => {
         let actionButtons = '';
 
-        // Prevent deletion of own user
+        // Only allow Boss role to Reset Password/Delete accounts under staff list
         if (state.user.id !== u.id) {
-          actionButtons = `
-            <button onclick="openChangePasswordModal(${u.id}, '${u.full_name}')" class="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded font-bold transition mr-2"><i class="fa-solid fa-key"></i> Pass</button>
-            <button onclick="handleDeleteUser(${u.id}, '${u.full_name}')" class="px-2.5 py-1 bg-red-50 hover:bg-red-100 text-red-600 rounded font-bold transition"><i class="fa-solid fa-user-minus"></i> Remove</button>
-          `;
+          if (isBoss) {
+            actionButtons = `
+              <button onclick="openChangePasswordModal(${u.id}, '${u.full_name}')" class="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded font-bold transition mr-2"><i class="fa-solid fa-key"></i> Reset</button>
+              <button onclick="handleDeleteUser(${u.id}, '${u.full_name}')" class="px-2.5 py-1 bg-red-50 hover:bg-red-100 text-red-600 rounded font-bold transition"><i class="fa-solid fa-user-minus"></i> Remove</button>
+            `;
+          } else {
+            actionButtons = `<span class="text-slate-400 text-[10px] italic font-semibold">Protected (Boss Only)</span>`;
+          }
         } else {
           actionButtons = `<span class="text-slate-400 text-[10px] italic font-semibold">Active Account</span>`;
         }
