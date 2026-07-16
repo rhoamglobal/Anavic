@@ -16,21 +16,21 @@ router.get('/', requireAuth, (req, res) => {
 
 // POST /api/customers - Create a new credit customer (Boss only!)
 router.post('/', requireAuth, requireRole('boss'), (req, res) => {
-  const { name, custom_diesel_price, credit_limit } = req.body;
+  const { name, custom_ago_price, custom_dpk_price, custom_petrol_price, credit_limit } = req.body;
 
   if (!name) {
     return res.status(400).json({ error: 'Customer name is required.' });
   }
 
-  const customPrice = custom_diesel_price !== undefined && custom_diesel_price !== '' && custom_diesel_price !== null ? parseFloat(custom_diesel_price) : null;
+  const agoPrice = custom_ago_price !== undefined && custom_ago_price !== '' && custom_ago_price !== null ? parseFloat(custom_ago_price) : null;
+  const dpkPrice = custom_dpk_price !== undefined && custom_dpk_price !== '' && custom_dpk_price !== null ? parseFloat(custom_dpk_price) : null;
+  const petrolPrice = custom_petrol_price !== undefined && custom_petrol_price !== '' && custom_petrol_price !== null ? parseFloat(custom_petrol_price) : null;
   const limit = credit_limit !== undefined ? parseFloat(credit_limit) : 5000.0;
 
-  if (customPrice !== null && (isNaN(customPrice) || customPrice < 0)) {
-    return res.status(400).json({ error: 'Custom diesel price must be a positive number.' });
-  }
-  if (isNaN(limit) || limit < 0) {
-    return res.status(400).json({ error: 'Credit limit must be a positive number.' });
-  }
+  if (agoPrice !== null && (isNaN(agoPrice) || agoPrice < 0)) return res.status(400).json({ error: 'Custom AGO price must be positive.' });
+  if (dpkPrice !== null && (isNaN(dpkPrice) || dpkPrice < 0)) return res.status(400).json({ error: 'Custom DPK price must be positive.' });
+  if (petrolPrice !== null && (isNaN(petrolPrice) || petrolPrice < 0)) return res.status(400).json({ error: 'Custom Petrol price must be positive.' });
+  if (isNaN(limit) || limit < 0) return res.status(400).json({ error: 'Credit limit must be a positive number.' });
 
   try {
     // Check duplicate name
@@ -40,9 +40,9 @@ router.post('/', requireAuth, requireRole('boss'), (req, res) => {
     }
 
     const result = db.prepare(`
-      INSERT INTO credit_customers (name, custom_diesel_price, credit_limit, balance, status)
-      VALUES (?, ?, ?, 0.0, 'active')
-    `).run(name, customPrice, limit);
+      INSERT INTO credit_customers (name, custom_ago_price, custom_dpk_price, custom_petrol_price, credit_limit, balance, status)
+      VALUES (?, ?, ?, ?, ?, 0.0, 'active')
+    `).run(name, agoPrice, dpkPrice, petrolPrice, limit);
 
     res.status(201).json({
       message: 'Credit customer created successfully.',
@@ -57,7 +57,7 @@ router.post('/', requireAuth, requireRole('boss'), (req, res) => {
 // PUT /api/customers/:id - Edit corporate customer full profile (Boss only!)
 router.put('/:id', requireAuth, requireRole('boss'), (req, res) => {
   const customerId = parseInt(req.params.id);
-  const { name, custom_diesel_price, credit_limit, status } = req.body;
+  const { name, custom_ago_price, custom_dpk_price, custom_petrol_price, credit_limit, status } = req.body;
 
   if (isNaN(customerId)) {
     return res.status(400).json({ error: 'Invalid customer ID.' });
@@ -71,15 +71,15 @@ router.put('/:id', requireAuth, requireRole('boss'), (req, res) => {
     return res.status(400).json({ error: 'Invalid status. Must be active or inactive.' });
   }
 
-  const customPrice = custom_diesel_price !== undefined && custom_diesel_price !== '' && custom_diesel_price !== null ? parseFloat(custom_diesel_price) : null;
+  const agoPrice = custom_ago_price !== undefined && custom_ago_price !== '' && custom_ago_price !== null ? parseFloat(custom_ago_price) : null;
+  const dpkPrice = custom_dpk_price !== undefined && custom_dpk_price !== '' && custom_dpk_price !== null ? parseFloat(custom_dpk_price) : null;
+  const petrolPrice = custom_petrol_price !== undefined && custom_petrol_price !== '' && custom_petrol_price !== null ? parseFloat(custom_petrol_price) : null;
   const limit = credit_limit !== undefined ? parseFloat(credit_limit) : 5000.0;
 
-  if (customPrice !== null && (isNaN(customPrice) || customPrice < 0)) {
-    return res.status(400).json({ error: 'Custom diesel price must be a positive number.' });
-  }
-  if (isNaN(limit) || limit < 0) {
-    return res.status(400).json({ error: 'Credit limit must be a positive number.' });
-  }
+  if (agoPrice !== null && (isNaN(agoPrice) || agoPrice < 0)) return res.status(400).json({ error: 'Custom AGO price must be positive.' });
+  if (dpkPrice !== null && (isNaN(dpkPrice) || dpkPrice < 0)) return res.status(400).json({ error: 'Custom DPK price must be positive.' });
+  if (petrolPrice !== null && (isNaN(petrolPrice) || petrolPrice < 0)) return res.status(400).json({ error: 'Custom Petrol price must be positive.' });
+  if (isNaN(limit) || limit < 0) return res.status(400).json({ error: 'Credit limit must be a positive number.' });
 
   try {
     const customer = db.prepare('SELECT id FROM credit_customers WHERE id = ?').get(customerId);
@@ -95,9 +95,9 @@ router.put('/:id', requireAuth, requireRole('boss'), (req, res) => {
 
     db.prepare(`
       UPDATE credit_customers
-      SET name = ?, custom_diesel_price = ?, credit_limit = ?, status = ?
+      SET name = ?, custom_ago_price = ?, custom_dpk_price = ?, custom_petrol_price = ?, credit_limit = ?, status = ?
       WHERE id = ?
-    `).run(name, customPrice, limit, status || 'active', customerId);
+    `).run(name, agoPrice, dpkPrice, petrolPrice, limit, status || 'active', customerId);
 
     res.json({ message: 'Credit customer updated successfully.' });
   } catch (err) {
@@ -109,17 +109,19 @@ router.put('/:id', requireAuth, requireRole('boss'), (req, res) => {
 // PUT /api/customers/:id/custom-price - Edit ONLY corporate customer custom pricing (Accountant & Boss!)
 router.put('/:id/custom-price', requireAuth, requireAnyRole(['accountant', 'boss']), (req, res) => {
   const customerId = parseInt(req.params.id);
-  const { custom_diesel_price } = req.body;
+  const { custom_ago_price, custom_dpk_price, custom_petrol_price } = req.body;
 
   if (isNaN(customerId)) {
     return res.status(400).json({ error: 'Invalid customer ID.' });
   }
 
-  const customPrice = custom_diesel_price !== undefined && custom_diesel_price !== '' && custom_diesel_price !== null ? parseFloat(custom_diesel_price) : null;
+  const agoPrice = custom_ago_price !== undefined && custom_ago_price !== '' && custom_ago_price !== null ? parseFloat(custom_ago_price) : null;
+  const dpkPrice = custom_dpk_price !== undefined && custom_dpk_price !== '' && custom_dpk_price !== null ? parseFloat(custom_dpk_price) : null;
+  const petrolPrice = custom_petrol_price !== undefined && custom_petrol_price !== '' && custom_petrol_price !== null ? parseFloat(custom_petrol_price) : null;
 
-  if (customPrice !== null && (isNaN(customPrice) || customPrice < 0)) {
-    return res.status(400).json({ error: 'Custom diesel price must be a positive number.' });
-  }
+  if (agoPrice !== null && (isNaN(agoPrice) || agoPrice < 0)) return res.status(400).json({ error: 'Custom AGO price must be positive.' });
+  if (dpkPrice !== null && (isNaN(dpkPrice) || dpkPrice < 0)) return res.status(400).json({ error: 'Custom DPK price must be positive.' });
+  if (petrolPrice !== null && (isNaN(petrolPrice) || petrolPrice < 0)) return res.status(400).json({ error: 'Custom Petrol price must be positive.' });
 
   try {
     const customer = db.prepare('SELECT id FROM credit_customers WHERE id = ?').get(customerId);
@@ -129,11 +131,16 @@ router.put('/:id/custom-price', requireAuth, requireAnyRole(['accountant', 'boss
 
     db.prepare(`
       UPDATE credit_customers
-      SET custom_diesel_price = ?
+      SET custom_ago_price = ?, custom_dpk_price = ?, custom_petrol_price = ?
       WHERE id = ?
-    `).run(customPrice, customerId);
+    `).run(agoPrice, dpkPrice, petrolPrice, customerId);
 
-    res.json({ message: 'Corporate custom price updated successfully.', custom_diesel_price: customPrice });
+    res.json({
+      message: 'Corporate custom price updated successfully.',
+      custom_ago_price: agoPrice,
+      custom_dpk_price: dpkPrice,
+      custom_petrol_price: petrolPrice
+    });
   } catch (err) {
     console.error('Error updating custom price:', err);
     res.status(500).json({ error: 'Failed to update custom price.' });

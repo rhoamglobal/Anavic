@@ -25,8 +25,9 @@ describe('Corporate Credit Ledgers & Accountant Operations', () => {
       .set('Authorization', `Bearer ${bossToken}`)
       .send({
         name: 'Globex Corp',
-        custom_diesel_price: 1.45,
-        credit_limit: 8000.00
+        custom_ago_price: 1045.0,
+        custom_dpk_price: 980.0,
+        credit_limit: 800000.00
       });
 
     expect(res.statusCode).toBe(201);
@@ -40,8 +41,8 @@ describe('Corporate Credit Ledgers & Accountant Operations', () => {
       .set('Authorization', `Bearer ${bossToken}`)
       .send({
         name: 'Globex Corp',
-        custom_diesel_price: 1.50,
-        credit_limit: 5000.00
+        custom_ago_price: 1050.0,
+        credit_limit: 500000.00
       });
 
     expect(res.statusCode).toBe(400);
@@ -57,7 +58,8 @@ describe('Corporate Credit Ledgers & Accountant Operations', () => {
     expect(res.body.length).toBeGreaterThan(0);
     const globex = res.body.find(c => c.name === 'Globex Corp');
     expect(globex).toBeDefined();
-    expect(globex.custom_diesel_price).toBe(1.45);
+    expect(globex.custom_ago_price).toBe(1045.0);
+    expect(globex.custom_dpk_price).toBe(980.0);
   });
 
   it('should log a credit purchase, record a payment, and verify the statement ledger details', async () => {
@@ -73,26 +75,27 @@ describe('Corporate Credit Ledgers & Accountant Operations', () => {
       .set('Authorization', `Bearer ${attendantToken}`)
       .send({
         opening_float: 50.0,
-        diesel_start_meter: 100.0,
+        ago_start_meter: 100.0,
+        dpk_start_meter: 300.0,
         petrol_start_meter: 200.0
       });
 
-    // Record credit purchase: 100 Liters of Diesel at custom Globex price of 1.45 = $145.00
+    // Record credit purchase: 100 Liters of AGO at custom Globex price of 1045.0 = 104,500.00
     const saleRes = await request(app)
       .post('/api/shifts/credit-sale')
       .set('Authorization', `Bearer ${attendantToken}`)
       .send({
         customer_id: customerId,
-        fuel_type: 'diesel',
+        fuel_type: 'ago',
         liters: 100.0
       });
     expect(saleRes.statusCode).toBe(201);
 
-    // Verify balance is 145.00
+    // Verify balance is 104,500.00
     let customerCheck = db.prepare("SELECT balance FROM credit_customers WHERE id = ?").get(customerId);
-    expect(customerCheck.balance).toBe(145.00);
+    expect(customerCheck.balance).toBe(104500.00);
 
-    // 2. Record payment of $100.00 from Globex Corp by Accountant
+    // 2. Record payment of 100,000.00 from Globex Corp by Accountant
     const accLoginRes = await request(app)
       .post('/api/auth/login')
       .send({ username: 'accountant', password: 'accountant123' });
@@ -102,12 +105,12 @@ describe('Corporate Credit Ledgers & Accountant Operations', () => {
       .post(`/api/customers/${customerId}/payments`)
       .set('Authorization', `Bearer ${accountantToken}`)
       .send({
-        amount: 100.00,
+        amount: 100000.00,
         payment_method: 'Bank Transfer',
         reference_no: 'TXN-998811'
       });
     expect(paymentRes.statusCode).toBe(201);
-    expect(paymentRes.body.newBalance).toBe(45.00);
+    expect(paymentRes.body.newBalance).toBe(4500.00);
 
     // 3. Retrieve and inspect the ledger
     const ledgerRes = await request(app)
@@ -115,7 +118,7 @@ describe('Corporate Credit Ledgers & Accountant Operations', () => {
       .set('Authorization', `Bearer ${accountantToken}`);
 
     expect(ledgerRes.statusCode).toBe(200);
-    expect(ledgerRes.body.customer.balance).toBe(45.00);
+    expect(ledgerRes.body.customer.balance).toBe(4500.00);
     expect(ledgerRes.body.ledger.length).toBe(2);
 
     // The ledger is sorted newest first (reverse order)
@@ -123,11 +126,11 @@ describe('Corporate Credit Ledgers & Accountant Operations', () => {
     const purchaseRow = ledgerRes.body.ledger[1];
 
     expect(paymentRow.type).toBe('payment');
-    expect(paymentRow.amount).toBe(100.00);
-    expect(paymentRow.runningBalance).toBe(45.00);
+    expect(paymentRow.amount).toBe(100000.00);
+    expect(paymentRow.runningBalance).toBe(4500.00);
 
     expect(purchaseRow.type).toBe('purchase');
-    expect(purchaseRow.amount).toBe(145.00);
-    expect(purchaseRow.runningBalance).toBe(145.00);
+    expect(purchaseRow.amount).toBe(104500.00);
+    expect(purchaseRow.runningBalance).toBe(104500.00);
   });
 });

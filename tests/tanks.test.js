@@ -31,18 +31,18 @@ describe('Tanks Inventory & Prices Management', () => {
       .set('Authorization', `Bearer ${accountantToken}`)
       .send({
         fuel_type: 'petrol',
-        price_per_liter: 1.95
+        price_per_liter: 1000.00
       });
 
     expect(res.statusCode).toBe(200);
-    expect(res.body.price_per_liter).toBe(1.95);
+    expect(res.body.price_per_liter).toBe(1000.00);
 
     // Verify in db
     const priceCheck = db.prepare("SELECT price_per_liter FROM fuel_prices WHERE fuel_type = 'petrol'").get();
-    expect(priceCheck.price_per_liter).toBe(1.95);
+    expect(priceCheck.price_per_liter).toBe(1000.00);
   });
 
-  it('should record daily tank inventory dip and deliveries successfully', async () => {
+  it('should record daily tank inventory dip and deliveries successfully across three products', async () => {
     const today = new Date().toISOString().split('T')[0];
 
     const res = await request(app)
@@ -50,18 +50,21 @@ describe('Tanks Inventory & Prices Management', () => {
       .set('Authorization', `Bearer ${accountantToken}`)
       .send({
         date: today,
-        diesel_start_dip: 5000.0,
-        diesel_end_dip: 4800.0,
-        diesel_delivery: 0.0,
-        petrol_start_dip: 8000.0,
-        petrol_end_dip: 12800.0,
-        petrol_delivery: 5000.0
+        ago_start_dip: 50000.0,
+        ago_end_dip: 48000.0,
+        ago_delivery: 0.0,
+        dpk_start_dip: 30000.0,
+        dpk_end_dip: 29500.0,
+        dpk_delivery: 0.0,
+        petrol_start_dip: 80000.0,
+        petrol_end_dip: 128000.0,
+        petrol_delivery: 50000.0
       });
 
     expect(res.statusCode).toBe(201);
   });
 
-  it('should query tank logs and return calculated variance', async () => {
+  it('should query tank logs and return calculated variance across three products', async () => {
     const res = await request(app)
       .get('/api/tanks')
       .set('Authorization', `Bearer ${accountantToken}`);
@@ -70,24 +73,27 @@ describe('Tanks Inventory & Prices Management', () => {
     expect(res.body.length).toBe(1);
 
     const log = res.body[0];
-    expect(log.diesel_start_dip).toBe(5000.0);
-    expect(log.diesel_end_dip).toBe(4800.0);
-    expect(log.petrol_delivery).toBe(5000.0);
+    expect(log.ago_start_dip).toBe(50000.0);
+    expect(log.ago_end_dip).toBe(48000.0);
+    expect(log.petrol_delivery).toBe(50000.0);
 
     // Check variance fields are calculated
-    expect(log).toHaveProperty('diesel_variance');
+    expect(log).toHaveProperty('ago_variance');
+    expect(log).toHaveProperty('dpk_variance');
     expect(log).toHaveProperty('petrol_variance');
   });
 
-  it('should return live stock status reflecting real-time sales correctly', async () => {
+  it('should return live stock status reflecting real-time sales correctly across three products', async () => {
     const res = await request(app)
       .get('/api/tanks/status')
       .set('Authorization', `Bearer ${accountantToken}`);
 
     expect(res.statusCode).toBe(200);
-    expect(res.body).toHaveProperty('diesel');
+    expect(res.body).toHaveProperty('ago');
+    expect(res.body).toHaveProperty('dpk');
     expect(res.body).toHaveProperty('petrol');
-    expect(res.body.diesel.live_estimated_stock).toBeDefined();
+    expect(res.body.ago.live_estimated_stock).toBeDefined();
+    expect(res.body.dpk.live_estimated_stock).toBeDefined();
     expect(res.body.petrol.live_estimated_stock).toBeDefined();
   });
 });

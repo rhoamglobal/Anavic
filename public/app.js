@@ -137,7 +137,7 @@ function handleLogout() {
 }
 
 // ==========================================
-// ATTENDANT SHIFT LOGIC
+// ATTENDANT SHIFT LOGIC (3 Products & Expenses modifications)
 // ==========================================
 
 // Load active shift
@@ -163,7 +163,7 @@ async function loadActiveShift() {
   }
 }
 
-// Render active shift content
+// Render active shift content for all three product lines
 function renderActiveShift() {
   document.getElementById('noShiftView').classList.add('hidden');
   document.getElementById('activeShiftView').classList.remove('hidden');
@@ -175,17 +175,20 @@ function renderActiveShift() {
   const openedDate = new Date(shift.opened_at);
   document.getElementById('shiftOpenedTime').innerText = openedDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) + ' ' + openedDate.toLocaleDateString();
 
-  // Meter start readings
-  const dieselMeter = shift.meters.find(m => m.fuel_type === 'diesel');
+  // Meter start readings for AGO, DPK, Petrol
+  const agoMeter = shift.meters.find(m => m.fuel_type === 'ago');
+  const dpkMeter = shift.meters.find(m => m.fuel_type === 'dpk');
   const petrolMeter = shift.meters.find(m => m.fuel_type === 'petrol');
 
-  document.getElementById('dieselStartMeterBadge').innerText = dieselMeter.start_meter.toFixed(2);
+  document.getElementById('agoStartMeterBadge').innerText = agoMeter.start_meter.toFixed(2);
+  document.getElementById('dpkStartMeterBadge').innerText = dpkMeter.start_meter.toFixed(2);
   document.getElementById('petrolStartMeterBadge').innerText = petrolMeter.start_meter.toFixed(2);
 
-  document.getElementById('dieselPriceBadge').innerText = `₦${dieselMeter.unit_price.toLocaleString()}/L`;
+  document.getElementById('agoPriceBadge').innerText = `₦${agoMeter.unit_price.toLocaleString()}/L`;
+  document.getElementById('dpkPriceBadge').innerText = `₦${dpkMeter.unit_price.toLocaleString()}/L`;
   document.getElementById('petrolPriceBadge').innerText = `₦${petrolMeter.unit_price.toLocaleString()}/L`;
 
-  // Expenses summary list
+  // Expenses summary list (WITH edit/delete capability)
   const expensesList = document.getElementById('shiftExpensesList');
   let totalExpenses = 0;
   if (shift.expenses.length === 0) {
@@ -194,19 +197,29 @@ function renderActiveShift() {
     expensesList.innerHTML = shift.expenses.map(e => {
       totalExpenses += e.amount;
       return `
-        <div class="flex items-center justify-between p-2 bg-red-50/50 border border-red-100 rounded-lg text-xs">
-          <div>
-            <span class="font-bold text-slate-800">${e.category}</span>
-            <p class="text-[10px] text-slate-400 mt-0.5">${e.description}</p>
+        <div class="p-3 bg-red-50/50 border border-red-100 rounded-lg text-xs space-y-2">
+          <div class="flex items-center justify-between">
+            <div>
+              <span class="font-bold text-slate-800">${e.category}</span>
+              <p class="text-[10px] text-slate-400 mt-0.5">${e.description}</p>
+            </div>
+            <span class="font-bold text-red-600">-₦${e.amount.toLocaleString()}</span>
           </div>
-          <span class="font-bold text-red-600">-₦${e.amount.toLocaleString()}</span>
+          <div class="flex items-center justify-end space-x-1.5 text-[10px] border-t border-red-100/40 pt-1.5 mt-1">
+            <button onclick="triggerEditExpense(${e.id}, ${e.amount}, '${e.category}', '${e.description.replace(/'/g, "\\'")}')" class="px-1.5 py-0.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded text-[9px] transition">
+              <i class="fa-solid fa-pen"></i> Correct
+            </button>
+            <button onclick="triggerDeleteExpense(${e.id})" class="px-1.5 py-0.5 bg-red-100 hover:bg-red-200 text-red-600 font-bold rounded text-[9px] transition">
+              <i class="fa-solid fa-trash"></i> Delete
+            </button>
+          </div>
         </div>
       `;
     }).join('');
   }
   document.getElementById('shiftExpenseTally').innerText = `Expenses: ₦${totalExpenses.toLocaleString()}`;
 
-  // Credit sales summary list with interactive corrections triggers
+  // Credit sales summary list with interactive corrections triggers (AGO, DPK, Petrol)
   const creditList = document.getElementById('shiftCreditSalesList');
   let totalCredit = 0;
   if (shift.creditSales.length === 0) {
@@ -220,10 +233,9 @@ function renderActiveShift() {
             <span class="font-bold text-slate-800">${c.customer_name}</span>
             <span class="font-bold text-emerald-700">₦${c.total_amount.toLocaleString()}</span>
           </div>
-          <div class="flex items-center justify-between text-[10px]">
-            <span class="text-slate-400">${c.liters.toFixed(2)}L ${c.fuel_type} @ ₦${c.price_per_liter.toLocaleString()}</span>
+          <div class="flex items-center justify-between text-[10px] border-t border-emerald-100/40 pt-1.5 mt-1">
+            <span class="text-slate-400">${c.liters.toFixed(2)}L ${c.fuel_type.toUpperCase()} @ ₦${c.price_per_liter.toLocaleString()}/L</span>
 
-            <!-- Safe action block hidden behind dropdown style correction trigger -->
             <div class="flex items-center space-x-1.5">
               <button onclick="triggerEditCreditSale(${c.id}, '${c.customer_name}', '${c.fuel_type.toUpperCase()}', ${c.liters})" class="px-1.5 py-0.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded text-[9px] transition">
                 <i class="fa-solid fa-pen"></i> Correct
@@ -240,13 +252,15 @@ function renderActiveShift() {
   document.getElementById('shiftCreditTally').innerText = `Credits: ₦${totalCredit.toLocaleString()}`;
 }
 
-// Handle opening shift
+// Handle opening shift across three products
 async function handleOpenShift(e) {
   e.preventDefault();
   const opening_float = document.getElementById('openFloatInput').value;
-  const diesel_start_meter = document.getElementById('openDieselMeterInput').value;
+  const ago_start_meter = document.getElementById('openAgoMeterInput').value;
+  const dpk_start_meter = document.getElementById('openDpkMeterInput').value;
   const petrol_start_meter = document.getElementById('openPetrolMeterInput').value;
-  const diesel_price = document.getElementById('openDieselPriceInput').value;
+  const ago_price = document.getElementById('openAgoPriceInput').value;
+  const dpk_price = document.getElementById('openDpkPriceInput').value;
   const petrol_price = document.getElementById('openPetrolPriceInput').value;
 
   try {
@@ -256,17 +270,19 @@ async function handleOpenShift(e) {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${state.token}`
       },
-      body: JSON.stringify({ opening_float, diesel_start_meter, petrol_start_meter, diesel_price, petrol_price })
+      body: JSON.stringify({ opening_float, ago_start_meter, dpk_start_meter, petrol_start_meter, ago_price, dpk_price, petrol_price })
     });
 
     const data = await res.json();
     if (res.ok) {
       showToast('Shift opened successfully!', 'success');
       toggleModal('openShiftModal', false);
-      // Reset input fields
-      document.getElementById('openDieselMeterInput').value = '';
+      // Reset fields
+      document.getElementById('openAgoMeterInput').value = '';
+      document.getElementById('openDpkMeterInput').value = '';
       document.getElementById('openPetrolMeterInput').value = '';
-      document.getElementById('openDieselPriceInput').value = '';
+      document.getElementById('openAgoPriceInput').value = '';
+      document.getElementById('openDpkPriceInput').value = '';
       document.getElementById('openPetrolPriceInput').value = '';
       loadActiveShift();
     } else {
@@ -311,6 +327,70 @@ async function handleLogExpense(e) {
   }
 }
 
+// Trigger edit modal for a shift expense
+function triggerEditExpense(expenseId, amount, category, description) {
+  document.getElementById('editExpenseId').value = expenseId;
+  document.getElementById('editExpenseAmountInput').value = amount;
+  document.getElementById('editExpenseCategoryInput').value = category;
+  document.getElementById('editExpenseDescInput').value = description;
+
+  toggleModal('editExpenseModal', true);
+}
+
+// Submit shift expense edit
+async function handleSubmitEditExpense(e) {
+  e.preventDefault();
+  const expenseId = document.getElementById('editExpenseId').value;
+  const amount = document.getElementById('editExpenseAmountInput').value;
+  const category = document.getElementById('editExpenseCategoryInput').value;
+  const description = document.getElementById('editExpenseDescInput').value.trim();
+
+  try {
+    const res = await fetch(`${API_URL}/api/shifts/expense/${expenseId}`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${state.token}`
+      },
+      body: JSON.stringify({ amount, category, description })
+    });
+
+    const data = await res.json();
+    if (res.ok) {
+      showToast('Expense corrected successfully!', 'success');
+      toggleModal('editExpenseModal', false);
+      loadActiveShift();
+    } else {
+      showToast(data.error || 'Failed to correct expense.', 'error');
+    }
+  } catch (err) {
+    console.error('Error submitting expense correction:', err);
+  }
+}
+
+// Delete logged expense (with double confirmation block)
+async function triggerDeleteExpense(expenseId) {
+  const check = confirm(`Are you absolutely sure you want to remove this logged expense?`);
+  if (!check) return;
+
+  try {
+    const res = await fetch(`${API_URL}/api/shifts/expense/${expenseId}`, {
+      method: 'DELETE',
+      headers: { 'Authorization': `Bearer ${state.token}` }
+    });
+
+    const data = await res.json();
+    if (res.ok) {
+      showToast('Expense removed successfully.', 'success');
+      loadActiveShift();
+    } else {
+      showToast(data.error || 'Failed to remove expense.', 'error');
+    }
+  } catch (err) {
+    console.error('Error deleting expense:', err);
+  }
+}
+
 // Open and populate customers list inside the credit sale modal
 async function openCreditSaleModal() {
   try {
@@ -327,8 +407,12 @@ async function openCreditSaleModal() {
         select.innerHTML = `<option value="">No Active Corporate Accounts</option>`;
       } else {
         select.innerHTML = activeCustomers.map(c => {
-          const rateLabel = c.custom_diesel_price ? `(Custom Diesel Rate: ₦${c.custom_diesel_price.toLocaleString()}/L)` : '(Standard Price)';
-          return `<option value="${c.id}">${c.name} ${rateLabel}</option>`;
+          let pricingDetail = '';
+          if (c.custom_ago_price) pricingDetail += ` AGO: ₦${c.custom_ago_price.toLocaleString()}`;
+          if (c.custom_dpk_price) pricingDetail += ` DPK: ₦${c.custom_dpk_price.toLocaleString()}`;
+          if (c.custom_petrol_price) pricingDetail += ` Petrol: ₦${c.custom_petrol_price.toLocaleString()}`;
+          if (!pricingDetail) pricingDetail = 'Standard pricing fallback';
+          return `<option value="${c.id}">${c.name} (${pricingDetail})</option>`;
         }).join('');
       }
 
@@ -437,20 +521,26 @@ async function triggerDeleteCreditSale(saleId, customerName) {
   }
 }
 
-// Trigger shift close preview before actual submission so attendant can review/correct!
+// Trigger shift close preview before actual submission (Calculates across 3 product lines)
 function handleTriggerShiftPreview(e) {
   e.preventDefault();
-  const dieselEnd = parseFloat(document.getElementById('closeDieselMeterInput').value);
+  const agoEnd = parseFloat(document.getElementById('closeAgoMeterInput').value);
+  const dpkEnd = parseFloat(document.getElementById('closeDpkMeterInput').value);
   const petrolEnd = parseFloat(document.getElementById('closePetrolMeterInput').value);
   const cashActual = parseFloat(document.getElementById('closeCashInput').value);
   const posActual = parseFloat(document.getElementById('closePosInput').value || 0);
 
   const shift = state.activeShift;
-  const dieselMeter = shift.meters.find(m => m.fuel_type === 'diesel');
+  const agoMeter = shift.meters.find(m => m.fuel_type === 'ago');
+  const dpkMeter = shift.meters.find(m => m.fuel_type === 'dpk');
   const petrolMeter = shift.meters.find(m => m.fuel_type === 'petrol');
 
-  if (dieselEnd < dieselMeter.start_meter) {
-    showToast(`Diesel end reading (${dieselEnd}) cannot be less than start (${dieselMeter.start_meter}).`, 'error');
+  if (agoEnd < agoMeter.start_meter) {
+    showToast(`AGO end reading (${agoEnd}) cannot be less than start (${agoMeter.start_meter}).`, 'error');
+    return;
+  }
+  if (dpkEnd < dpkMeter.start_meter) {
+    showToast(`DPK end reading (${dpkEnd}) cannot be less than start (${dpkMeter.start_meter}).`, 'error');
     return;
   }
   if (petrolEnd < petrolMeter.start_meter) {
@@ -458,12 +548,15 @@ function handleTriggerShiftPreview(e) {
     return;
   }
 
-  // Calculate parameters
-  const dieselLiters = dieselEnd - dieselMeter.start_meter;
+  // Calculate parameters for AGO, DPK, Petrol
+  const agoLiters = agoEnd - agoMeter.start_meter;
+  const dpkLiters = dpkEnd - dpkMeter.start_meter;
   const petrolLiters = petrolEnd - petrolMeter.start_meter;
-  const dieselRevenue = dieselLiters * dieselMeter.unit_price;
+
+  const agoRevenue = agoLiters * agoMeter.unit_price;
+  const dpkRevenue = dpkLiters * dpkMeter.unit_price;
   const petrolRevenue = petrolLiters * petrolMeter.unit_price;
-  const totalRevenue = dieselRevenue + petrolRevenue;
+  const totalRevenue = agoRevenue + dpkRevenue + petrolRevenue;
 
   const totalExpenses = shift.expenses.reduce((sum, e) => sum + e.amount, 0);
   const totalCreditSales = shift.creditSales.reduce((sum, c) => sum + c.total_amount, 0);
@@ -473,7 +566,8 @@ function handleTriggerShiftPreview(e) {
 
   // Store close payload for confirmation
   state.closePayload = {
-    diesel_end_meter: dieselEnd,
+    ago_end_meter: agoEnd,
+    dpk_end_meter: dpkEnd,
     petrol_end_meter: petrolEnd,
     closing_cash_actual: cashActual,
     closing_pos_actual: posActual
@@ -482,16 +576,21 @@ function handleTriggerShiftPreview(e) {
   // Render preview HTML
   const container = document.getElementById('previewContent');
   container.innerHTML = `
-    <div class="grid grid-cols-2 gap-4 border-b border-slate-100 pb-3">
-      <div>
-        <span class="block text-[10px] text-slate-400 font-bold">DIESEL SOLD</span>
-        <span class="font-mono font-bold text-slate-800 text-sm">${dieselLiters.toFixed(2)} Liters</span>
-        <p class="text-[10px] text-slate-400 mt-0.5">Revenue: ₦${dieselRevenue.toLocaleString()}</p>
+    <div class="grid grid-cols-3 gap-2 border-b border-slate-100 pb-3 text-center">
+      <div class="p-1.5 bg-orange-50/50 rounded-lg">
+        <span class="block text-[8px] text-orange-700 font-extrabold uppercase">AGO SOLD</span>
+        <span class="font-mono font-bold text-slate-800 text-xs">${agoLiters.toFixed(2)} L</span>
+        <p class="text-[8px] text-slate-400">₦${agoRevenue.toLocaleString()}</p>
       </div>
-      <div>
-        <span class="block text-[10px] text-slate-400 font-bold">PETROL SOLD</span>
-        <span class="font-mono font-bold text-slate-800 text-sm">${petrolLiters.toFixed(2)} Liters</span>
-        <p class="text-[10px] text-slate-400 mt-0.5">Revenue: ₦${petrolRevenue.toLocaleString()}</p>
+      <div class="p-1.5 bg-amber-50/50 rounded-lg">
+        <span class="block text-[8px] text-amber-800 font-extrabold uppercase">DPK SOLD</span>
+        <span class="font-mono font-bold text-slate-800 text-xs">${dpkLiters.toFixed(2)} L</span>
+        <p class="text-[8px] text-slate-400">₦${dpkRevenue.toLocaleString()}</p>
+      </div>
+      <div class="p-1.5 bg-red-50/50 rounded-lg">
+        <span class="block text-[8px] text-red-700 font-extrabold uppercase">PMS SOLD</span>
+        <span class="font-mono font-bold text-slate-800 text-xs">${petrolLiters.toFixed(2)} L</span>
+        <p class="text-[8px] text-slate-400">₦${petrolRevenue.toLocaleString()}</p>
       </div>
     </div>
 
@@ -561,7 +660,8 @@ async function handleConfirmShiftClose() {
       toggleModal('closeShiftPreviewModal', false);
 
       // Reset inputs
-      document.getElementById('closeDieselMeterInput').value = '';
+      document.getElementById('closeAgoMeterInput').value = '';
+      document.getElementById('closeDpkMeterInput').value = '';
       document.getElementById('closePetrolMeterInput').value = '';
       document.getElementById('closeCashInput').value = '';
       document.getElementById('closePosInput').value = '';
@@ -617,7 +717,7 @@ function switchAccountantTab(tabId) {
   }
 }
 
-// 1. Load shift reconciliations
+// 1. Load shift reconciliations (formatted for AGO, DPK, Petrol)
 async function loadShiftsList() {
   const status = document.getElementById('shiftStatusFilter').value;
   let url = `${API_URL}/api/shifts`;
@@ -672,7 +772,7 @@ async function loadShiftsList() {
         if (s.status === 'closed') {
           actionBtn = `<button onclick="openReconcileReviewModal(${s.id})" class="px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white font-semibold rounded text-[11px] transition">Review & Approve</button>`;
         } else if (s.status === 'approved') {
-          actionBtn = `<button onclick="openReconcileReviewModal(${s.id})" class="px-3 py-1.5 bg-slate-100 text-slate-500 font-semibold rounded text-[11px]">View Audit Details</button>`;
+          actionBtn = `<button onclick="openReconcileReviewModal(${s.id})" class="px-3 py-1.5 bg-slate-100 text-slate-500 font-semibold rounded text-[11px]">View Details</button>`;
         }
 
         return `
@@ -699,7 +799,7 @@ async function loadShiftsList() {
   }
 }
 
-// Open Shift Detail Reconciliation popup review
+// Open Shift Detail Reconciliation popup review (With AGO, DPK, Petrol fields)
 async function openReconcileReviewModal(shiftId) {
   try {
     const res = await fetch(`${API_URL}/api/shifts`, {
@@ -730,16 +830,21 @@ async function openReconcileReviewModal(shiftId) {
 
         <div class="space-y-3">
           <h4 class="font-bold text-slate-900">1. Fuel Sales Breakdown</h4>
-          <div class="grid grid-cols-2 gap-4">
-            <div class="bg-orange-50/40 border border-orange-100 p-3 rounded-xl">
-              <span class="text-[10px] text-orange-800 font-bold">DIESEL</span>
-              <span class="block font-mono font-bold mt-1 text-slate-800">${calc.dieselLiters.toFixed(2)} Liters</span>
-              <span class="text-[10px] text-slate-400">Revenue: ₦${calc.dieselRevenue.toLocaleString()}</span>
+          <div class="grid grid-cols-3 gap-2 text-center">
+            <div class="bg-orange-50/40 border border-orange-100 p-2.5 rounded-xl">
+              <span class="text-[9px] text-orange-800 font-extrabold">AGO (Diesel 1)</span>
+              <span class="block font-mono font-bold mt-1 text-slate-800">${calc.agoLiters.toFixed(2)} L</span>
+              <span class="text-[9px] text-slate-400">₦${calc.agoRevenue.toLocaleString()}</span>
             </div>
-            <div class="bg-red-50/40 border border-red-100 p-3 rounded-xl">
-              <span class="text-[10px] text-red-800 font-bold">PETROL</span>
-              <span class="block font-mono font-bold mt-1 text-slate-800">${calc.petrolLiters.toFixed(2)} Liters</span>
-              <span class="text-[10px] text-slate-400">Revenue: ₦${calc.petrolRevenue.toLocaleString()}</span>
+            <div class="bg-amber-50/40 border border-amber-100 p-2.5 rounded-xl">
+              <span class="text-[9px] text-amber-800 font-extrabold">DPK (Diesel 2)</span>
+              <span class="block font-mono font-bold mt-1 text-slate-800">${calc.dpkLiters.toFixed(2)} L</span>
+              <span class="text-[9px] text-slate-400">₦${calc.dpkRevenue.toLocaleString()}</span>
+            </div>
+            <div class="bg-red-50/40 border border-red-100 p-2.5 rounded-xl">
+              <span class="text-[9px] text-red-800 font-extrabold">PETROL (PMS)</span>
+              <span class="block font-mono font-bold mt-1 text-slate-800">${calc.petrolLiters.toFixed(2)} L</span>
+              <span class="text-[9px] text-slate-400">₦${calc.petrolRevenue.toLocaleString()}</span>
             </div>
           </div>
           <div class="flex justify-between items-center bg-slate-50 p-3 rounded-xl font-bold">
@@ -857,7 +962,7 @@ async function loadAnalytics() {
     if (res.ok) {
       const { summary, expenseTally } = await res.json();
 
-      document.getElementById('statVolume').innerText = `${(summary.totalDieselLiters + summary.totalPetrolLiters).toFixed(2)} Liters`;
+      document.getElementById('statVolume').innerText = `${(summary.totalAgoLiters + summary.totalDpkLiters + summary.totalPetrolLiters).toFixed(2)} Liters`;
       document.getElementById('statRevenue').innerText = `₦${summary.totalRevenue.toLocaleString()}`;
       document.getElementById('statExpenses').innerText = `₦${summary.totalExpenses.toLocaleString()}`;
 
@@ -866,16 +971,16 @@ async function loadAnalytics() {
       const varSub = document.getElementById('statVarianceSub');
       if (variance < 0) {
         varStat.innerText = `-₦${Math.abs(variance).toLocaleString()}`;
-        varStat.className = 'block text-2xl font-bold mt-1 text-red-600';
-        varSub.innerText = 'Total net shortage (uncollected cash)';
+        varStat.className = 'block text-lg sm:text-2xl font-bold mt-1 text-red-600';
+        varSub.innerText = 'Total net shortage';
       } else if (variance > 0) {
         varStat.innerText = `+₦${variance.toLocaleString()}`;
-        varStat.className = 'block text-2xl font-bold mt-1 text-emerald-600';
+        varStat.className = 'block text-lg sm:text-2xl font-bold mt-1 text-emerald-600';
         varSub.innerText = 'Total net surplus cash collected';
       } else {
         varStat.innerText = `₦0.00`;
-        varStat.className = 'block text-2xl font-bold mt-1 text-slate-800';
-        varSub.innerText = 'Perfect physical cash drawer match!';
+        varStat.className = 'block text-lg sm:text-2xl font-bold mt-1 text-slate-800';
+        varSub.innerText = 'Perfect physical match!';
       }
 
       // Render chart
@@ -944,10 +1049,12 @@ async function loadCurrentPrices() {
 
     if (res.ok) {
       const prices = await res.json();
-      const diesel = prices.find(p => p.fuel_type === 'diesel')?.price_per_liter || 1100.0;
+      const ago = prices.find(p => p.fuel_type === 'ago')?.price_per_liter || 1100.0;
+      const dpk = prices.find(p => p.fuel_type === 'dpk')?.price_per_liter || 1000.0;
       const petrol = prices.find(p => p.fuel_type === 'petrol')?.price_per_liter || 950.0;
 
-      document.getElementById('labelCurrentDiesel').innerText = `Current: ₦${diesel.toLocaleString()} / L`;
+      document.getElementById('labelCurrentAgo').innerText = `Current: ₦${ago.toLocaleString()} / L`;
+      document.getElementById('labelCurrentDpk').innerText = `Current: ₦${dpk.toLocaleString()} / L`;
       document.getElementById('labelCurrentPetrol').innerText = `Current: ₦${petrol.toLocaleString()} / L`;
     }
   } catch (err) {
@@ -957,7 +1064,10 @@ async function loadCurrentPrices() {
 
 // Global price updater
 async function handlePriceUpdate(fuel_type) {
-  const inputId = fuel_type === 'diesel' ? 'inputDieselPrice' : 'inputPetrolPrice';
+  let inputId = 'inputPetrolPrice';
+  if (fuel_type === 'ago') inputId = 'inputAgoPrice';
+  if (fuel_type === 'dpk') inputId = 'inputDpkPrice';
+
   const price_per_liter = document.getElementById(inputId).value;
 
   if (!price_per_liter) {
@@ -1005,7 +1115,13 @@ async function loadCorporateCustomers() {
 
       list.innerHTML = state.customers.map(c => {
         const activeClass = state.selectedCustomerId === c.id ? 'bg-red-50/50 border-red-200' : 'bg-slate-50/50 hover:bg-slate-50 border-slate-100';
-        const customPriceLabel = c.custom_diesel_price ? `₦${c.custom_diesel_price.toLocaleString()}/L` : 'Standard';
+
+        // Custom rates markers
+        let pricingTags = [];
+        if (c.custom_ago_price) pricingTags.push(`AGO: ₦${c.custom_ago_price}`);
+        if (c.custom_dpk_price) pricingTags.push(`DPK: ₦${c.custom_dpk_price}`);
+        if (c.custom_petrol_price) pricingTags.push(`PMS: ₦${c.custom_petrol_price}`);
+        const finalPricingLabel = pricingTags.length > 0 ? pricingTags.join(', ') : 'Standard Prices';
 
         // Active status badge
         const statLabel = c.status === 'active' ? 'Active' : 'Inactive';
@@ -1017,8 +1133,8 @@ async function loadCorporateCustomers() {
               <span class="flex items-center gap-1.5">${c.name} <span class="text-[9px] px-1 py-0.5 rounded font-bold ${statColor}">${statLabel}</span></span>
               <span class="text-red-600">₦${c.balance.toLocaleString()}</span>
             </div>
-            <div class="flex justify-between text-slate-400 text-[10px]">
-              <span>Diesel Price: <strong class="text-slate-600">${customPriceLabel}</strong></span>
+            <div class="flex flex-col space-y-0.5 text-slate-400 text-[10px]">
+              <span>Prices: <strong class="text-slate-600">${finalPricingLabel}</strong></span>
               <span>Limit: <strong>₦${c.credit_limit.toLocaleString()}</strong></span>
             </div>
           </div>
@@ -1041,7 +1157,9 @@ function selectCustomer(id) {
 async function handleCreateCustomer(e) {
   e.preventDefault();
   const name = document.getElementById('custNameInput').value.trim();
-  const custom_diesel_price = document.getElementById('custCustomDieselInput').value;
+  const custom_ago_price = document.getElementById('custCustomAgoInput').value;
+  const custom_dpk_price = document.getElementById('custCustomDpkInput').value;
+  const custom_petrol_price = document.getElementById('custCustomPetrolInput').value;
   const credit_limit = document.getElementById('custLimitInput').value;
 
   try {
@@ -1051,7 +1169,7 @@ async function handleCreateCustomer(e) {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${state.token}`
       },
-      body: JSON.stringify({ name, custom_diesel_price, credit_limit })
+      body: JSON.stringify({ name, custom_ago_price, custom_dpk_price, custom_petrol_price, credit_limit })
     });
 
     const data = await res.json();
@@ -1059,7 +1177,9 @@ async function handleCreateCustomer(e) {
       showToast('Corporate customer registered successfully!', 'success');
       toggleModal('createCustomerModal', false);
       document.getElementById('custNameInput').value = '';
-      document.getElementById('custCustomDieselInput').value = '';
+      document.getElementById('custCustomAgoInput').value = '';
+      document.getElementById('custCustomDpkInput').value = '';
+      document.getElementById('custCustomPetrolInput').value = '';
       document.getElementById('custLimitInput').value = '';
       loadCorporateCustomers();
     } else {
@@ -1077,7 +1197,9 @@ function openEditCustomerModal() {
 
   document.getElementById('editCustId').value = customer.id;
   document.getElementById('editCustNameInput').value = customer.name;
-  document.getElementById('editCustCustomDieselInput').value = customer.custom_diesel_price !== null ? customer.custom_diesel_price : '';
+  document.getElementById('editCustCustomAgoInput').value = customer.custom_ago_price !== null ? customer.custom_ago_price : '';
+  document.getElementById('editCustCustomDpkInput').value = customer.custom_dpk_price !== null ? customer.custom_dpk_price : '';
+  document.getElementById('editCustCustomPetrolInput').value = customer.custom_petrol_price !== null ? customer.custom_petrol_price : '';
   document.getElementById('editCustLimitInput').value = customer.credit_limit;
   document.getElementById('editCustStatusInput').value = customer.status;
 
@@ -1089,7 +1211,9 @@ async function handleEditCustomerSubmit(e) {
   e.preventDefault();
   const id = document.getElementById('editCustId').value;
   const name = document.getElementById('editCustNameInput').value.trim();
-  const custom_diesel_price = document.getElementById('editCustCustomDieselInput').value;
+  const custom_ago_price = document.getElementById('editCustCustomAgoInput').value;
+  const custom_dpk_price = document.getElementById('editCustCustomDpkInput').value;
+  const custom_petrol_price = document.getElementById('editCustCustomPetrolInput').value;
   const credit_limit = document.getElementById('editCustLimitInput').value;
   const status = document.getElementById('editCustStatusInput').value;
 
@@ -1100,7 +1224,7 @@ async function handleEditCustomerSubmit(e) {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${state.token}`
       },
-      body: JSON.stringify({ name, custom_diesel_price, credit_limit, status })
+      body: JSON.stringify({ name, custom_ago_price, custom_dpk_price, custom_petrol_price, credit_limit, status })
     });
 
     const data = await res.json();
@@ -1119,11 +1243,9 @@ async function handleEditCustomerSubmit(e) {
 
 // Accountant custom price update handler (Restricted to Accountants & Boss)
 async function handleUpdateCustomPrice() {
-  const price = document.getElementById('customPriceInput').value;
-  if (!price) {
-    showToast('Please enter a custom diesel price first.', 'error');
-    return;
-  }
+  const ago = document.getElementById('customAgoPriceInput').value;
+  const dpk = document.getElementById('customDpkPriceInput').value;
+  const petrol = document.getElementById('customPetrolPriceInput').value;
 
   try {
     const res = await fetch(`${API_URL}/api/customers/${state.selectedCustomerId}/custom-price`, {
@@ -1132,13 +1254,15 @@ async function handleUpdateCustomPrice() {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${state.token}`
       },
-      body: JSON.stringify({ custom_diesel_price: price })
+      body: JSON.stringify({ custom_ago_price: ago, custom_dpk_price: dpk, custom_petrol_price: petrol })
     });
 
     const data = await res.json();
     if (res.ok) {
-      showToast(`Corporate custom rate updated to ₦${data.custom_diesel_price.toLocaleString()}/L`, 'success');
-      document.getElementById('customPriceInput').value = '';
+      showToast(`Corporate custom rates updated!`, 'success');
+      document.getElementById('customAgoPriceInput').value = '';
+      document.getElementById('customDpkPriceInput').value = '';
+      document.getElementById('customPetrolPriceInput').value = '';
       loadCorporateCustomers();
       loadCustomerLedger(state.selectedCustomerId);
     } else {
@@ -1178,7 +1302,7 @@ async function handleDeleteCustomer() {
   }
 }
 
-// Load statement ledger lines
+// Load statement ledger lines (reflecting AGO, DPK, Petrol custom values)
 async function loadCustomerLedger(customerId) {
   try {
     const res = await fetch(`${API_URL}/api/customers/${customerId}/ledger`, {
@@ -1201,8 +1325,13 @@ async function loadCustomerLedger(customerId) {
         statusBadge.className = 'text-[9px] uppercase px-1.5 py-0.5 rounded font-bold bg-slate-200 text-slate-600';
       }
 
-      const rateLabel = customer.custom_diesel_price ? `Custom Diesel Rate: ₦${customer.custom_diesel_price.toLocaleString()}/L` : 'Diesel: Standard Rate';
-      document.getElementById('ledgerCustomerPrice').innerText = rateLabel;
+      const agoPriceLabel = customer.custom_ago_price ? `AGO Negotiated pricing rule: ₦${customer.custom_ago_price.toLocaleString()}/L` : 'AGO (Diesel 1): Standard pricing fallback';
+      const dpkPriceLabel = customer.custom_dpk_price ? `DPK Negotiated pricing rule: ₦${customer.custom_dpk_price.toLocaleString()}/L` : 'DPK (Diesel 2): Standard pricing fallback';
+      const petrolPriceLabel = customer.custom_petrol_price ? `Petrol Negotiated pricing rule: ₦${customer.custom_petrol_price.toLocaleString()}/L` : 'Petrol: Standard pricing fallback';
+
+      document.getElementById('ledgerCustomerAgo').innerText = agoPriceLabel;
+      document.getElementById('ledgerCustomerDpk').innerText = dpkPriceLabel;
+      document.getElementById('ledgerCustomerPetrol').innerText = petrolPriceLabel;
       document.getElementById('ledgerCustomerLimit').innerText = `Credit Limit: ₦${customer.credit_limit.toLocaleString()}`;
 
       const balBadge = document.getElementById('ledgerCustomerBalance');
@@ -1289,7 +1418,7 @@ async function handleRecordPayment() {
   }
 }
 
-// Load real-time live stock status estimation levels
+// Load real-time live stock status estimation levels across three tanks
 async function loadLiveTankStatus() {
   try {
     const res = await fetch(`${API_URL}/api/tanks/status`, {
@@ -1298,7 +1427,8 @@ async function loadLiveTankStatus() {
 
     if (res.ok) {
       const data = await res.json();
-      document.getElementById('liveDieselStockLabel').innerText = `${data.diesel.live_estimated_stock.toFixed(2)} Liters`;
+      document.getElementById('liveAgoStockLabel').innerText = `${data.ago.live_estimated_stock.toFixed(2)} Liters`;
+      document.getElementById('liveDpkStockLabel').innerText = `${data.dpk.live_estimated_stock.toFixed(2)} Liters`;
       document.getElementById('livePetrolStockLabel').innerText = `${data.petrol.live_estimated_stock.toFixed(2)} Liters`;
     }
   } catch (err) {
@@ -1306,7 +1436,7 @@ async function loadLiveTankStatus() {
   }
 }
 
-// 4. Load Tank Wet Stock reports
+// 4. Load Tank Wet Stock reports for three products
 async function loadTankReports() {
   try {
     const res = await fetch(`${API_URL}/api/tanks`, {
@@ -1317,34 +1447,43 @@ async function loadTankReports() {
       const logs = await res.json();
       const tbody = document.getElementById('tankTableBody');
       if (logs.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="13" class="text-center text-slate-400 py-12">No daily tank dip reports logged yet.</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="19" class="text-center text-slate-400 py-12">No daily tank dip reports logged yet.</td></tr>`;
         return;
       }
 
       tbody.innerHTML = logs.map(l => {
-        const dVarianceClass = l.diesel_variance < 0 ? 'text-red-600 bg-red-50/50' : l.diesel_variance > 0 ? 'text-emerald-700 bg-emerald-50/50' : 'text-slate-600';
+        const aVarianceClass = l.ago_variance < 0 ? 'text-red-600 bg-red-50/50' : l.ago_variance > 0 ? 'text-emerald-700 bg-emerald-50/50' : 'text-slate-600';
+        const dVarianceClass = l.dpk_variance < 0 ? 'text-red-600 bg-red-50/50' : l.dpk_variance > 0 ? 'text-emerald-700 bg-emerald-50/50' : 'text-slate-600';
         const pVarianceClass = l.petrol_variance < 0 ? 'text-red-600 bg-red-50/50' : l.petrol_variance > 0 ? 'text-emerald-700 bg-emerald-50/50' : 'text-slate-600';
 
-        const dieselVarLabel = l.diesel_variance === 0 ? '0.00' : (l.diesel_variance < 0 ? `-${Math.abs(l.diesel_variance).toFixed(2)}` : `+${l.diesel_variance.toFixed(2)}`);
+        const agoVarLabel = l.ago_variance === 0 ? '0.00' : (l.ago_variance < 0 ? `-${Math.abs(l.ago_variance).toFixed(2)}` : `+${l.ago_variance.toFixed(2)}`);
+        const dpkVarLabel = l.dpk_variance === 0 ? '0.00' : (l.dpk_variance < 0 ? `-${Math.abs(l.dpk_variance).toFixed(2)}` : `+${l.dpk_variance.toFixed(2)}`);
         const petrolVarLabel = l.petrol_variance === 0 ? '0.00' : (l.petrol_variance < 0 ? `-${Math.abs(l.petrol_variance).toFixed(2)}` : `+${l.petrol_variance.toFixed(2)}`);
 
         return `
           <tr class="hover:bg-slate-50/50 transition">
-            <td class="px-6 py-4 font-bold text-slate-900">${l.date}</td>
+            <td class="px-6 py-4 font-bold text-slate-900 text-left">${l.date}</td>
 
-            <td class="px-6 py-4 bg-orange-50/20 text-slate-700">${l.diesel_start_dip.toFixed(2)}</td>
-            <td class="px-6 py-4 bg-orange-50/20 text-slate-700">${l.diesel_delivery > 0 ? `+${l.diesel_delivery.toFixed(2)}` : '---'}</td>
-            <td class="px-6 py-4 bg-orange-50/20 text-slate-700">-${l.diesel_sold.toFixed(2)}</td>
-            <td class="px-6 py-4 bg-orange-50/20 text-slate-700 font-semibold">${l.diesel_expected.toFixed(2)}</td>
-            <td class="px-6 py-4 bg-orange-50/20 text-slate-900 font-bold">${l.diesel_end_dip.toFixed(2)}</td>
-            <td class="px-6 py-4 font-bold ${dVarianceClass}">${dieselVarLabel}</td>
+            <td class="px-4 py-4 bg-orange-50/20 text-slate-700">${l.ago_start_dip.toFixed(2)}</td>
+            <td class="px-4 py-4 bg-orange-50/20 text-slate-700">${l.ago_delivery > 0 ? `+${l.ago_delivery.toFixed(2)}` : '---'}</td>
+            <td class="px-4 py-4 bg-orange-50/20 text-slate-700">-${l.ago_sold.toFixed(2)}</td>
+            <td class="px-4 py-4 bg-orange-50/20 text-slate-700 font-semibold">${l.ago_expected.toFixed(2)}</td>
+            <td class="px-4 py-4 bg-orange-50/20 text-slate-900 font-bold">${l.ago_end_dip.toFixed(2)}</td>
+            <td class="px-4 py-4 font-bold ${aVarianceClass}">${agoVarLabel}</td>
 
-            <td class="px-6 py-4 bg-red-50/20 text-slate-700">${l.petrol_start_dip.toFixed(2)}</td>
-            <td class="px-6 py-4 bg-red-50/20 text-slate-700">${l.petrol_delivery > 0 ? `+${l.petrol_delivery.toFixed(2)}` : '---'}</td>
-            <td class="px-6 py-4 bg-red-50/20 text-slate-700">-${l.petrol_sold.toFixed(2)}</td>
-            <td class="px-6 py-4 bg-red-50/20 text-slate-700 font-semibold">${l.petrol_expected.toFixed(2)}</td>
-            <td class="px-6 py-4 bg-red-50/20 text-slate-900 font-bold">${l.petrol_end_dip.toFixed(2)}</td>
-            <td class="px-6 py-4 font-bold ${pVarianceClass}">${petrolVarLabel}</td>
+            <td class="px-4 py-4 bg-amber-50/20 text-slate-700">${l.dpk_start_dip.toFixed(2)}</td>
+            <td class="px-4 py-4 bg-amber-50/20 text-slate-700">${l.dpk_delivery > 0 ? `+${l.dpk_delivery.toFixed(2)}` : '---'}</td>
+            <td class="px-4 py-4 bg-amber-50/20 text-slate-700">-${l.dpk_sold.toFixed(2)}</td>
+            <td class="px-4 py-4 bg-amber-50/20 text-slate-700 font-semibold">${l.dpk_expected.toFixed(2)}</td>
+            <td class="px-4 py-4 bg-amber-50/20 text-slate-900 font-bold">${l.dpk_end_dip.toFixed(2)}</td>
+            <td class="px-4 py-4 font-bold ${dVarianceClass}">${dpkVarLabel}</td>
+
+            <td class="px-4 py-4 bg-red-50/20 text-slate-700">${l.petrol_start_dip.toFixed(2)}</td>
+            <td class="px-4 py-4 bg-red-50/20 text-slate-700">${l.petrol_delivery > 0 ? `+${l.petrol_delivery.toFixed(2)}` : '---'}</td>
+            <td class="px-4 py-4 bg-red-50/20 text-slate-700">-${l.petrol_sold.toFixed(2)}</td>
+            <td class="px-4 py-4 bg-red-50/20 text-slate-700 font-semibold">${l.petrol_expected.toFixed(2)}</td>
+            <td class="px-4 py-4 bg-red-50/20 text-slate-900 font-bold">${l.petrol_end_dip.toFixed(2)}</td>
+            <td class="px-4 py-4 font-bold ${pVarianceClass}">${petrolVarLabel}</td>
           </tr>
         `;
       }).join('');
@@ -1354,13 +1493,17 @@ async function loadTankReports() {
   }
 }
 
-// Handle recording daily tank inventory dips
+// Handle recording daily tank inventory dips across AGO, DPK, Petrol
 async function handleRecordDips(e) {
   e.preventDefault();
   const date = document.getElementById('dipDateInput').value;
-  const diesel_start_dip = document.getElementById('dipDieselStart').value;
-  const diesel_delivery = document.getElementById('dipDieselDeliv').value || '0';
-  const diesel_end_dip = document.getElementById('dipDieselEnd').value;
+  const ago_start_dip = document.getElementById('dipAgoStart').value;
+  const ago_delivery = document.getElementById('dipAgoDeliv').value || '0';
+  const ago_end_dip = document.getElementById('dipAgoEnd').value;
+
+  const dpk_start_dip = document.getElementById('dipDpkStart').value;
+  const dpk_delivery = document.getElementById('dipDpkDeliv').value || '0';
+  const dpk_end_dip = document.getElementById('dipDpkEnd').value;
 
   const petrol_start_dip = document.getElementById('dipPetrolStart').value;
   const petrol_delivery = document.getElementById('dipPetrolDeliv').value || '0';
@@ -1375,9 +1518,12 @@ async function handleRecordDips(e) {
       },
       body: JSON.stringify({
         date,
-        diesel_start_dip,
-        diesel_delivery,
-        diesel_end_dip,
+        ago_start_dip,
+        ago_delivery,
+        ago_end_dip,
+        dpk_start_dip,
+        dpk_delivery,
+        dpk_end_dip,
         petrol_start_dip,
         petrol_delivery,
         petrol_end_dip
@@ -1390,9 +1536,12 @@ async function handleRecordDips(e) {
       toggleModal('recordDipModal', false);
       // Reset inputs
       document.getElementById('dipDateInput').value = '';
-      document.getElementById('dipDieselStart').value = '';
-      document.getElementById('dipDieselDeliv').value = '';
-      document.getElementById('dipDieselEnd').value = '';
+      document.getElementById('dipAgoStart').value = '';
+      document.getElementById('dipAgoDeliv').value = '';
+      document.getElementById('dipAgoEnd').value = '';
+      document.getElementById('dipDpkStart').value = '';
+      document.getElementById('dipDpkDeliv').value = '';
+      document.getElementById('dipDpkEnd').value = '';
       document.getElementById('dipPetrolStart').value = '';
       document.getElementById('dipPetrolDeliv').value = '';
       document.getElementById('dipPetrolEnd').value = '';

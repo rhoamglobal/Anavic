@@ -23,7 +23,7 @@ function initDatabase() {
     );
 
     CREATE TABLE IF NOT EXISTS fuel_prices (
-      fuel_type TEXT PRIMARY KEY CHECK(fuel_type IN ('diesel', 'petrol')),
+      fuel_type TEXT PRIMARY KEY CHECK(fuel_type IN ('ago', 'dpk', 'petrol')),
       price_per_liter REAL NOT NULL,
       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
     );
@@ -47,7 +47,7 @@ function initDatabase() {
     CREATE TABLE IF NOT EXISTS shift_meters (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       shift_id INTEGER NOT NULL,
-      fuel_type TEXT NOT NULL CHECK(fuel_type IN ('diesel', 'petrol')),
+      fuel_type TEXT NOT NULL CHECK(fuel_type IN ('ago', 'dpk', 'petrol')),
       start_meter REAL NOT NULL,
       end_meter REAL,
       unit_price REAL NOT NULL,
@@ -68,7 +68,9 @@ function initDatabase() {
     CREATE TABLE IF NOT EXISTS credit_customers (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       name TEXT UNIQUE NOT NULL,
-      custom_diesel_price REAL,
+      custom_ago_price REAL,
+      custom_dpk_price REAL,
+      custom_petrol_price REAL,
       credit_limit REAL NOT NULL DEFAULT 5000.0,
       balance REAL NOT NULL DEFAULT 0.0,
       status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active', 'inactive')),
@@ -79,7 +81,7 @@ function initDatabase() {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       shift_id INTEGER NOT NULL,
       customer_id INTEGER NOT NULL,
-      fuel_type TEXT NOT NULL CHECK(fuel_type IN ('diesel', 'petrol')),
+      fuel_type TEXT NOT NULL CHECK(fuel_type IN ('ago', 'dpk', 'petrol')),
       liters REAL NOT NULL,
       price_per_liter REAL NOT NULL,
       total_amount REAL NOT NULL,
@@ -103,9 +105,12 @@ function initDatabase() {
     CREATE TABLE IF NOT EXISTS tank_inventory (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       date TEXT UNIQUE NOT NULL,
-      diesel_start_dip REAL NOT NULL,
-      diesel_end_dip REAL NOT NULL,
-      diesel_delivery REAL NOT NULL DEFAULT 0.0,
+      ago_start_dip REAL NOT NULL,
+      ago_end_dip REAL NOT NULL,
+      ago_delivery REAL NOT NULL DEFAULT 0.0,
+      dpk_start_dip REAL NOT NULL,
+      dpk_end_dip REAL NOT NULL,
+      dpk_delivery REAL NOT NULL DEFAULT 0.0,
       petrol_start_dip REAL NOT NULL,
       petrol_end_dip REAL NOT NULL,
       petrol_delivery REAL NOT NULL DEFAULT 0.0,
@@ -149,8 +154,9 @@ function seedDefaultData() {
     const insertPrice = db.prepare(`
       INSERT INTO fuel_prices (fuel_type, price_per_liter) VALUES (?, ?)
     `);
-    // Seed default prices in Naira (₦): Diesel = 1100, Petrol = 950 per liter
-    insertPrice.run('diesel', 1100.0);
+    // Seed default prices in Naira (₦): AGO = 1100, DPK = 1000, Petrol = 950 per liter
+    insertPrice.run('ago', 1100.0);
+    insertPrice.run('dpk', 1000.0);
     insertPrice.run('petrol', 950.0);
     console.log('Fuel prices seeded successfully.');
   }
@@ -159,11 +165,11 @@ function seedDefaultData() {
   const customerCount = db.prepare('SELECT count(*) as count FROM credit_customers').get().count;
   if (customerCount === 0) {
     const insertCustomer = db.prepare(`
-      INSERT INTO credit_customers (name, custom_diesel_price, credit_limit, balance, status) VALUES (?, ?, ?, ?, 'active')
+      INSERT INTO credit_customers (name, custom_ago_price, custom_dpk_price, custom_petrol_price, credit_limit, balance, status) VALUES (?, ?, ?, ?, ?, ?, 'active')
     `);
     // Custom prices in Naira
-    insertCustomer.run('Swift Logistics', 1050.0, 5000000.0, 0.0);
-    insertCustomer.run('Mega Construction', null, 3000000.0, 0.0);
+    insertCustomer.run('Swift Logistics', 1050.0, 980.0, null, 5000000.0, 0.0);
+    insertCustomer.run('Mega Construction', null, null, null, 3000000.0, 0.0);
     console.log('Credit customers seeded successfully.');
   }
 }
