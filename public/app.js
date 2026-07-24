@@ -561,7 +561,16 @@ function handleTriggerShiftPreview(e) {
   const totalExpenses = shift.expenses.reduce((sum, e) => sum + e.amount, 0);
   const totalCreditSales = shift.creditSales.reduce((sum, c) => sum + c.total_amount, 0);
 
-  const expectedCash = totalRevenue - totalCreditSales - totalExpenses - posActual + shift.opening_float;
+  // Calculate total credit sales discounts
+  let totalDiscounts = 0;
+  for (const sale of shift.creditSales) {
+    const shiftMeter = shift.meters.find(m => m.fuel_type === sale.fuel_type);
+    const pumpPrice = shiftMeter ? shiftMeter.unit_price : sale.price_per_liter;
+    const discountPerLiter = Math.max(0, pumpPrice - sale.price_per_liter);
+    totalDiscounts += sale.liters * discountPerLiter;
+  }
+
+  const expectedCash = totalRevenue - totalCreditSales - totalDiscounts - totalExpenses - posActual + shift.opening_float;
   const variance = cashActual - expectedCash;
 
   // Store close payload for confirmation
@@ -610,6 +619,10 @@ function handleTriggerShiftPreview(e) {
       <div class="flex justify-between">
         <span>Logged Corporate Credit Sales (-)</span>
         <span class="font-bold text-emerald-700">-₦${totalCreditSales.toLocaleString()}</span>
+      </div>
+      <div class="flex justify-between">
+        <span>Corporate Price Discounts (-)</span>
+        <span class="font-bold text-pink-600">-₦${totalDiscounts.toLocaleString()}</span>
       </div>
       <div class="flex justify-between">
         <span>Actual Card/POS Terminal Sales (-)</span>
@@ -867,6 +880,10 @@ async function openReconcileReviewModal(shiftId) {
             <div class="flex justify-between">
               <span>Shift Credit/On-Account Sales (-)</span>
               <span class="font-semibold text-emerald-700">-₦${calc.totalCreditSales.toLocaleString()}</span>
+            </div>
+            <div class="flex justify-between">
+              <span>Corporate Price Discounts (-)</span>
+              <span class="font-semibold text-pink-600">-₦${(calc.totalDiscounts || 0).toLocaleString()}</span>
             </div>
             <div class="flex justify-between">
               <span>POS Card Transactions (-)</span>

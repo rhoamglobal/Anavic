@@ -82,7 +82,7 @@ router.get('/status', requireAuth, (req, res) => {
       FROM shift_meters sm
       JOIN shifts s ON sm.shift_id = s.id
       WHERE s.status IN ('closed', 'approved')
-        AND (s.opened_at > ? OR strftime('%Y-%m-%d', s.opened_at) > ?)
+        AND (s.opened_at > ? OR strftime('%Y-%m-%d', s.opened_at, 'localtime') > ?)
     `).get(baseTimestamp, baseDate);
 
     const agoSoldSince = sales?.ago_sold || 0;
@@ -130,7 +130,7 @@ router.get('/', requireAuth, (req, res) => {
 
     // Enrich logs with sales and variance analysis
     const enrichedDips = dips.map(dip => {
-      // Find total liters sold on this date from shift meters
+      // Find total liters sold on this date from shift meters using local timezone
       const salesQuery = db.prepare(`
         SELECT
           SUM(CASE WHEN sm.fuel_type = 'ago' THEN (sm.end_meter - sm.start_meter) ELSE 0 END) as ago_sold,
@@ -138,7 +138,7 @@ router.get('/', requireAuth, (req, res) => {
           SUM(CASE WHEN sm.fuel_type = 'petrol' THEN (sm.end_meter - sm.start_meter) ELSE 0 END) as petrol_sold
         FROM shift_meters sm
         JOIN shifts s ON sm.shift_id = s.id
-        WHERE strftime('%Y-%m-%d', s.opened_at) = ? AND s.status IN ('closed', 'approved')
+        WHERE strftime('%Y-%m-%d', s.opened_at, 'localtime') = ? AND s.status IN ('closed', 'approved')
       `).get(dip.date);
 
       const agoSold = salesQuery?.ago_sold || 0;

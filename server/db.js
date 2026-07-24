@@ -3,7 +3,9 @@ const path = require('path');
 const bcrypt = require('bcryptjs');
 
 // Database connection
-const dbPath = path.resolve(__dirname, '../gas_station.sqlite');
+const isTest = process.env.NODE_ENV === 'test';
+const dbFile = isTest ? '../gas_station_test.sqlite' : '../gas_station.sqlite';
+const dbPath = path.resolve(__dirname, dbFile);
 const db = new Database(dbPath);
 
 // Enable foreign keys

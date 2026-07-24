@@ -235,16 +235,16 @@ describe('Pump Attendant Shift Operations', () => {
       });
 
     // Readings submitted:
-    // AGO: 1200 (100L sold @ 1100 = 110,000)
+    // AGO: 1200 (200L sold @ 1100 = 220,000)
     // DPK: 3100 (100L sold @ 1000 = 100,000)
     // Petrol: 5100 (100L sold @ 950 = 95,000)
-    // Total Revenue = 305,000
+    // Total Nozzle Revenue = 415,000
     // Expenses = 25.50
-    // Credit Sales = 105,000
+    // Credit Sales = 105,000 (100L @ 1050 custom AGO price)
+    // Corporate Price Discount = 5,000 (100L @ (1100 standard - 1050 custom))
     // POS Card Sales submitted = 50,000
     // Opening Float = 100
-    // Expected Cash = Revenue (305000) - Expenses (25.50) - Credit (105000) - POS (50000) + Float (100) = 150074.50
-    // If attendant submits physical cash = 150000.00, variance should be -74.50 (shortage)
+    // Expected Cash = Nozzle Revenue (415000) - Expenses (25.50) - Credit (105000) - Corporate Discount (5000) - POS (50000) + Float (100) = 255074.50
 
     const res = await request(app)
       .post('/api/shifts/close')
@@ -260,6 +260,6 @@ describe('Pump Attendant Shift Operations', () => {
     expect(res.statusCode).toBe(200);
     expect(res.body.reconciliation.agoLiters).toBe(200.0); // 1200 - 1000 = 200
     expect(res.body.reconciliation.totalRevenue).toBe(415000.00);
-    expect(res.body.reconciliation.expectedCash).toBe(260074.50);
+    expect(res.body.reconciliation.expectedCash).toBe(255074.50);
   });
 });

@@ -496,6 +496,16 @@ router.post('/close', requireAuth, requireRole('attendant'), (req, res) => {
     const totalExpenses = db.prepare('SELECT SUM(amount) as total FROM shift_expenses WHERE shift_id = ?').get(shift.id).total || 0;
     const totalCreditSales = db.prepare('SELECT SUM(total_amount) as total FROM credit_sales WHERE shift_id = ?').get(shift.id).total || 0;
 
+    // Calculate total credit sales discounts
+    const creditSales = db.prepare('SELECT * FROM credit_sales WHERE shift_id = ?').all(shift.id);
+    let totalDiscounts = 0;
+    for (const sale of creditSales) {
+      const shiftMeter = meters.find(m => m.fuel_type === sale.fuel_type);
+      const pumpPrice = shiftMeter ? shiftMeter.unit_price : sale.price_per_liter;
+      const discountPerLiter = Math.max(0, pumpPrice - sale.price_per_liter);
+      totalDiscounts += sale.liters * discountPerLiter;
+    }
+
     // Fuel sales quantities
     const agoLiters = agoEnd - agoMeter.start_meter;
     const dpkLiters = dpkEnd - dpkMeter.start_meter;
@@ -507,8 +517,8 @@ router.post('/close', requireAuth, requireRole('attendant'), (req, res) => {
     const petrolRevenue = petrolLiters * petrolMeter.unit_price;
     const totalRevenue = agoRevenue + dpkRevenue + petrolRevenue;
 
-    // Expected cash calculation
-    const expectedCash = totalRevenue - totalCreditSales - totalExpenses - posActual + shift.opening_float;
+    // Expected cash calculation (subtract discounts to prevent shortages)
+    const expectedCash = totalRevenue - totalCreditSales - totalDiscounts - totalExpenses - posActual + shift.opening_float;
     const variance = cashActual - expectedCash;
 
     // Close Shift transaction
@@ -543,6 +553,7 @@ router.post('/close', requireAuth, requireRole('attendant'), (req, res) => {
         totalRevenue,
         totalExpenses,
         totalCreditSales,
+        totalDiscounts,
         openingFloat: shift.opening_float,
         expectedCash,
         actualCashCollected: cashActual,
@@ -610,8 +621,17 @@ router.get('/', requireAuth, requireAnyRole(['accountant', 'boss']), (req, res) 
       const totalExpenses = expenses.reduce((sum, e) => sum + e.amount, 0);
       const totalCreditSales = creditSales.reduce((sum, c) => sum + c.total_amount, 0);
 
-      // expectedCash uses POS deduction
-      const expectedCash = totalRevenue - totalCreditSales - totalExpenses - shift.closing_pos_actual + shift.opening_float;
+      // Calculate total credit sales discounts
+      let totalDiscounts = 0;
+      for (const sale of creditSales) {
+        const shiftMeter = meters.find(m => m.fuel_type === sale.fuel_type);
+        const pumpPrice = shiftMeter ? shiftMeter.unit_price : sale.price_per_liter;
+        const discountPerLiter = Math.max(0, pumpPrice - sale.price_per_liter);
+        totalDiscounts += sale.liters * discountPerLiter;
+      }
+
+      // expectedCash uses POS deduction and discounts deduction to prevent shortages
+      const expectedCash = totalRevenue - totalCreditSales - totalDiscounts - totalExpenses - shift.closing_pos_actual + shift.opening_float;
       const variance = shift.status === 'open' ? 0 : (shift.closing_cash_actual - expectedCash);
 
       return {
@@ -629,6 +649,7 @@ router.get('/', requireAuth, requireAnyRole(['accountant', 'boss']), (req, res) 
           totalRevenue,
           totalExpenses,
           totalCreditSales,
+          totalDiscounts,
           expectedCash,
           variance
         }
@@ -712,7 +733,16 @@ router.get('/analytics', requireAuth, requireAnyRole(['accountant', 'boss']), (r
       const tExp = expenses.reduce((sum, e) => sum + e.amount, 0);
       const tCredit = creditSales.reduce((sum, c) => sum + c.total_amount, 0);
 
-      const expectedCash = tRev - tCredit - tExp - shift.closing_pos_actual + shift.opening_float;
+      // Calculate discounts
+      let tDiscounts = 0;
+      for (const sale of creditSales) {
+        const shiftMeter = meters.find(m => m.fuel_type === sale.fuel_type);
+        const pumpPrice = shiftMeter ? shiftMeter.unit_price : sale.price_per_liter;
+        const discountPerLiter = Math.max(0, pumpPrice - sale.price_per_liter);
+        tDiscounts += sale.liters * discountPerLiter;
+      }
+
+      const expectedCash = tRev - tCredit - tDiscounts - tExp - shift.closing_pos_actual + shift.opening_float;
       const variance = shift.closing_cash_actual - expectedCash;
 
       totalRevenue += tRev;
