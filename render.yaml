@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: gbam-server
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /matchmake/
+    envVars:
+      - key: NODE_VERSION
+        value: 20
